@@ -52,6 +52,7 @@ export function createEntitlementToken(
   stripeSessionId: string,
   tierId: string,
   customerEmail: string | null,
+  used = 0,
 ): string | null {
   const tier = getPricingTier(tierId);
   if (!tier) return null;
@@ -59,7 +60,7 @@ export function createEntitlementToken(
     stripeSessionId,
     tierId: tier.id,
     allowance: tier.propertyAllowance,
-    used: 0,
+    used: Math.min(Math.max(0, used), tier.propertyAllowance),
     customerEmail,
   });
 }

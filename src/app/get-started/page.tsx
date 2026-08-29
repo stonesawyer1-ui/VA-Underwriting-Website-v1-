@@ -93,7 +93,15 @@ export default async function GetStartedPage({
 
   const tierId = checkoutSession.metadata?.tierId ?? "";
   const tier = getPricingTier(tierId);
-  const token = createEntitlementToken(sessionId, tierId, checkoutSession.customer_details?.email ?? null);
+
+  // The number of reports already submitted on this paid session lives in
+  // the Stripe session's own metadata (updated by the intake API after each
+  // submission) rather than in server memory, so it survives page reloads
+  // and can't be reset just by revisiting this URL with the same session_id.
+  const usedRaw = Number.parseInt(checkoutSession.metadata?.used ?? "0", 10);
+  const used = Number.isFinite(usedRaw) && usedRaw > 0 ? usedRaw : 0;
+
+  const token = createEntitlementToken(sessionId, tierId, checkoutSession.customer_details?.email ?? null, used);
   if (!token || !tier) {
     return (
       <GateMessage
@@ -103,7 +111,16 @@ export default async function GetStartedPage({
     );
   }
 
-  return <GetStartedForm token={token} tierId={tier.id} allowance={tier.propertyAllowance} used={0} />;
+  if (used >= tier.propertyAllowance) {
+    return (
+      <GateMessage
+        title="You've used all your property reviews on this plan."
+        body={`This order already used all ${tier.propertyAllowance} property review${tier.propertyAllowance === 1 ? "" : "s"} on the ${tier.name} plan. Choose a new plan to submit another property.`}
+      />
+    );
+  }
+
+  return <GetStartedForm token={token} tierId={tier.id} allowance={tier.propertyAllowance} used={used} />;
 }
 
 function GetStartedForm({

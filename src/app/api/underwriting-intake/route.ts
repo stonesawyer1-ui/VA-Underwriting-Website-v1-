@@ -19,6 +19,7 @@ import { getTaxDisclaimer } from "@/lib/underwriting/taxDisclaimers";
 import { UnderwritingReportDocument, type UnderwritingReportData } from "@/lib/pdf/UnderwritingReportDocument";
 import { UnderwritingDetailDocument } from "@/lib/pdf/UnderwritingDetailDocument";
 import { signEntitlement, verifyEntitlement } from "@/lib/entitlementToken";
+import { getStripeClient } from "@/lib/stripe";
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
@@ -78,7 +79,25 @@ export async function POST(request: NextRequest) {
       { status: 402 },
     );
   }
-  const nextToken = signEntitlement({ ...entitlement, used: entitlement.used + 1 });
+  const newUsedCount = entitlement.used + 1;
+  const nextToken = signEntitlement({ ...entitlement, used: newUsedCount });
+
+  // Persist the incremented count on the Stripe Checkout Session itself so a
+  // customer can't bypass their plan's allowance by simply revisiting
+  // /get-started?session_id=... — that page reads this value fresh on every
+  // load instead of trusting a client-supplied token. This is a real-money
+  // guard: without it, a single paid session could generate unlimited
+  // reports (each one a real research + email cost) for free.
+  const stripe = getStripeClient();
+  if (stripe && entitlement.stripeSessionId !== "demo") {
+    try {
+      await stripe.checkout.sessions.update(entitlement.stripeSessionId, {
+        metadata: { used: String(newUsedCount) },
+      });
+    } catch (err) {
+      console.error("[underwriting-intake] Failed to persist usage count to Stripe session", err);
+    }
+  }
 
   const referenceId = `GRR-${Date.now().toString(36).toUpperCase()}`;
 
