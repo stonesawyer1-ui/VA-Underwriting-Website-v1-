@@ -1,7 +1,6 @@
 import { Container } from "@/components/Container";
 import { CTAButton } from "@/components/CTAButton";
 import { SectionKicker } from "@/components/SectionKicker";
-import { PlaceholderNote } from "@/components/PlaceholderNote";
 import { Reveal } from "@/components/Reveal";
 import { MemoCardPreview } from "@/components/MemoCardPreview";
 import { pricingTiers } from "@/lib/site";
@@ -154,20 +153,6 @@ export default function HomePage() {
               {"Garrison Risk Review is veteran-owned and built specifically around VA loan mechanics and post-PCS house-hacking — not a generic real estate calculator with a flag on it."}
             </p>
           </Reveal>
-
-          <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-3">
-            <PlaceholderNote>
-              Veteran-owned business verification / badge to be added here.
-            </PlaceholderNote>
-            <PlaceholderNote>
-              Founder credentials and service background — see About page for
-              current draft copy.
-            </PlaceholderNote>
-            <PlaceholderNote>
-              Client testimonials will be added here once available. No
-              fabricated reviews are used on this site.
-            </PlaceholderNote>
-          </div>
         </Container>
       </section>
 
