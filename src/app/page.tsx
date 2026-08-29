@@ -35,8 +35,8 @@ const steps = [
   },
   {
     step: "03",
-    title: "Receive your Risk Memo PDF",
-    body: "A clear, professional memorandum covering tax spike exposure, rent coverage, market trends, and the risk factors that matter for your specific deal.",
+    title: "Receive your Underwriting Report PDF",
+    body: "A clear, professional VA Home Underwriting Report covering tax spike exposure, rent coverage, market trends, and the risk factors that matter for your specific deal.",
   },
   {
     step: "04",
@@ -66,9 +66,9 @@ export default function HomePage() {
                 coverage, and cash flow math before you sign — not after.
               </p>
               <div className="mt-9 flex flex-col gap-4 sm:flex-row">
-                <CTAButton href="/get-started">Get Your Risk Memo</CTAButton>
-                <CTAButton href="/sample-memo" variant="ghost" className="border-white/25 text-white hover:border-white/50">
-                  See a Sample Memo
+                <CTAButton href="/get-started">Get Your Underwriting Report</CTAButton>
+                <CTAButton href="/sample-report" variant="ghost" className="border-white/25 text-white hover:border-white/50">
+                  See a Sample Report
                 </CTAButton>
               </div>
               <p className="mt-6 text-xs tracking-wide text-white/40 uppercase">
@@ -181,7 +181,7 @@ export default function HomePage() {
             </h2>
           </Reveal>
 
-          <div className="mt-14 grid grid-cols-1 gap-6 md:grid-cols-3">
+          <div className="mx-auto mt-14 grid max-w-2xl grid-cols-1 gap-6 sm:grid-cols-2">
             {pricingTiers.map((tier, i) => (
               <Reveal key={tier.id} delay={i * 0.1}>
                 <div
@@ -205,6 +205,11 @@ export default function HomePage() {
                     className={`mt-1 text-3xl font-bold ${tier.highlighted ? "text-white" : "text-navy-900"}`}
                   >
                     {tier.priceLabel}
+                  </p>
+                  <p
+                    className={`mt-1 text-xs tracking-wide uppercase ${tier.highlighted ? "text-white/50" : "text-navy-900/40"}`}
+                  >
+                    {tier.properties}
                   </p>
                   <p
                     className={`mt-3 text-sm leading-relaxed ${tier.highlighted ? "text-white/70" : "text-navy-900/60"}`}
@@ -239,7 +244,7 @@ export default function HomePage() {
             Memorandum in as little as two business days.
           </p>
           <div className="mt-8 flex justify-center">
-            <CTAButton href="/get-started">Get Your Risk Memo</CTAButton>
+            <CTAButton href="/get-started">Get Your Underwriting Report</CTAButton>
           </div>
         </Container>
       </section>

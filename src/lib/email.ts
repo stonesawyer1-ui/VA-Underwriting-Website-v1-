@@ -1,0 +1,157 @@
+import { Resend } from "resend";
+import { siteConfig } from "@/lib/site";
+import type { UnderwritingFormData } from "@/lib/underwriting/types";
+import type { ResultsSummary } from "@/lib/underwriting/calculations";
+import { formatCurrency, formatPercent } from "@/lib/underwriting/format";
+
+// Defaults to Resend's shared sandbox domain, which works but hurts
+// deliverability/trust. Once review@garrisonriskreview.com is verified in
+// Resend (DNS records added), set EMAIL_FROM_ADDRESS and this switches with
+// no code change needed.
+const FROM_ADDRESS = process.env.EMAIL_FROM_ADDRESS || "Garrison Risk Review <onboarding@resend.dev>";
+
+function getClient(): Resend | null {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.warn("[email] RESEND_API_KEY is not set — skipping email notification.");
+    return null;
+  }
+  return new Resend(apiKey);
+}
+
+function row(label: string, value: string): string {
+  return `<tr><td style="padding:4px 12px 4px 0;color:#0a1f4499;white-space:nowrap;">${label}</td><td style="padding:4px 0;font-weight:600;color:#0a1f44;">${value}</td></tr>`;
+}
+
+export async function sendUnderwritingInquiryEmail(
+  data: UnderwritingFormData,
+  results: ResultsSummary,
+  referenceId: string,
+) {
+  const client = getClient();
+  if (!client) return;
+
+  const html = `
+    <div style="font-family:sans-serif;max-width:560px;margin:0 auto;">
+      <h2 style="color:#0a1f44;">New underwriting inquiry — ${referenceId}</h2>
+      <table cellpadding="0" cellspacing="0">
+        ${row("Name", data.customer.name || "—")}
+        ${row("Email", data.customer.email)}
+        ${row("Phone", data.customer.phone || "—")}
+        ${row("Property", `${data.property.address}, ${data.property.city}, ${data.property.state} ${data.property.zip}`)}
+        ${row("Purchase price", formatCurrency(Number(data.property.purchasePrice) || 0))}
+        ${row("Interest rate", `${data.financing.interestRate}%`)}
+        ${row("Move-in date", data.occupancy.moveInDate)}
+        ${row("Package", data.tier)}
+        ${row("Monthly PITI", formatCurrency(results.monthlyPITI))}
+        ${row("Break-even rent", formatCurrency(results.breakEvenRent))}
+        ${row("Cap rate", results.capRatePct === null ? "—" : formatPercent(results.capRatePct))}
+        ${row("Verdict", results.verdict.replace(/_/g, " "))}
+      </table>
+    </div>
+  `;
+
+  await client.emails.send({
+    from: FROM_ADDRESS,
+    to: siteConfig.notifyEmail,
+    replyTo: data.customer.email || undefined,
+    subject: `New inquiry: ${data.property.address || "Underwriting request"} (${referenceId})`,
+    html,
+  });
+}
+
+export async function sendUnderwritingReportToCustomer(params: {
+  customerEmail: string;
+  customerName: string;
+  referenceId: string;
+  reportPdf: Buffer;
+  underwritingPdf: Buffer;
+  workbookXlsx?: Buffer;
+}) {
+  const client = getClient();
+  if (!client) return;
+
+  const html = `
+    <div style="font-family:sans-serif;max-width:560px;margin:0 auto;">
+      <h2 style="color:#0a1f44;">Your VA Home Underwriting Report is ready — ${params.referenceId}</h2>
+      <p style="color:#222;line-height:1.6;">
+        ${params.customerName ? `Hi ${params.customerName},` : "Hi,"}<br/><br/>
+        Attached are your independent VA Home Underwriting Report, underwriting detail sheet,
+        ${params.workbookXlsx ? "and the filled underwriting workbook (Excel)" : ""}
+        for the property you submitted. Reach out if you have questions.
+      </p>
+      <p style="color:#888;font-size:12px;">Reference: ${params.referenceId}</p>
+    </div>
+  `;
+
+  const attachments = [
+    { filename: `VA-Underwriting-Report-${params.referenceId}.pdf`, content: params.reportPdf },
+    { filename: `Underwriting-Detail-${params.referenceId}.pdf`, content: params.underwritingPdf },
+  ];
+  if (params.workbookXlsx) {
+    attachments.push({ filename: `VA-Underwriting-Workbook-${params.referenceId}.xlsx`, content: params.workbookXlsx });
+  }
+
+  await client.emails.send({
+    from: FROM_ADDRESS,
+    to: params.customerEmail,
+    replyTo: siteConfig.notifyEmail,
+    subject: `Your VA Home Underwriting Report (${params.referenceId})`,
+    html,
+    attachments,
+  });
+}
+
+export async function sendHoldForReviewNotice(params: {
+  referenceId: string;
+  reasons: string[];
+  customerEmail: string;
+  propertyAddress: string;
+}) {
+  const client = getClient();
+  if (!client) return;
+
+  const html = `
+    <div style="font-family:sans-serif;max-width:560px;margin:0 auto;">
+      <h2 style="color:#c8102e;">Held for manual review — ${params.referenceId}</h2>
+      <p style="color:#222;">
+        ${params.propertyAddress} (${params.customerEmail}) was not confident enough to
+        auto-send. Confirm the numbers by hand, then deliver the report manually.
+      </p>
+      <ul style="color:#222;">
+        ${params.reasons.map((r) => `<li>${r}</li>`).join("")}
+      </ul>
+    </div>
+  `;
+
+  await client.emails.send({
+    from: FROM_ADDRESS,
+    to: siteConfig.notifyEmail,
+    subject: `Held for review: ${params.propertyAddress} (${params.referenceId})`,
+    html,
+  });
+}
+
+export async function sendContactMessageEmail(body: { name: string; email: string; message: string }) {
+  const client = getClient();
+  if (!client) return;
+
+  const html = `
+    <div style="font-family:sans-serif;max-width:560px;margin:0 auto;">
+      <h2 style="color:#0a1f44;">New contact form message</h2>
+      <table cellpadding="0" cellspacing="0">
+        ${row("Name", body.name)}
+        ${row("Email", body.email)}
+      </table>
+      <p style="margin-top:16px;white-space:pre-wrap;color:#0a1f44;">${body.message}</p>
+    </div>
+  `;
+
+  await client.emails.send({
+    from: FROM_ADDRESS,
+    to: siteConfig.notifyEmail,
+    replyTo: body.email,
+    subject: `New contact message from ${body.name}`,
+    html,
+  });
+}

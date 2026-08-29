@@ -19,7 +19,7 @@ export function MemoCardPreview({ className = "" }: { className?: string }) {
       <div className="flex items-center justify-between border-b border-navy-900/10 pb-4">
         <div>
           <p className="text-[10px] font-semibold tracking-[0.2em] text-navy-900/40 uppercase">
-            Risk Memorandum
+            VA Home Underwriting Report
           </p>
           <p className="mt-1 font-display text-sm font-bold text-navy-900">
             123 Sample Ct, Fayetteville, NC

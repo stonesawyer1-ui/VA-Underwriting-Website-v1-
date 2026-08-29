@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import { Container } from "@/components/Container";
 import { CTAButton } from "@/components/CTAButton";
 import { SectionKicker } from "@/components/SectionKicker";
-import { PlaceholderNote } from "@/components/PlaceholderNote";
 import { Reveal } from "@/components/Reveal";
 import { siteConfig } from "@/lib/site";
 
@@ -33,20 +33,20 @@ export default function AboutPage() {
                   I&apos;m an active-duty Engineer Officer and a graduate of the
                   United States Military Academy at West Point. Like most
                   service members, my introduction to real estate was the VA
-                  loan benefit — and like a lot of house-hackers, my first PCS
-                  cycle taught me how much the numbers can shift once a
-                  property stops being your primary residence.
+                  loan benefit — and across two PCS moves to opposite ends of
+                  the country, I learned firsthand how much the numbers can
+                  shift once a property stops being your primary residence.
                 </p>
                 <p>
-                  When orders came through, the tax bill on my own property
-                  was reassessed for non-owner-occupied status, and the rent I
-                  needed to cover the new payment wasn&apos;t what the online
-                  calculators had told me going in. I ran the real numbers by
-                  hand — county reassessment schedules, comparable rents,
-                  realistic vacancy — because nobody in the loan process was
-                  going to do it for me. The lender&apos;s job is to qualify
-                  the loan, not to tell you whether the deal still works once
-                  you leave.
+                  Each time orders came through, the tax bill on my own
+                  property was reassessed for non-owner-occupied status, and
+                  the rent I needed to cover the new payment wasn&apos;t what
+                  the online calculators had told me going in. I ran the real
+                  numbers by hand — county reassessment schedules, comparable
+                  rents, realistic vacancy — because nobody in the loan
+                  process was going to do it for me. The lender&apos;s job is
+                  to qualify the loan, not to tell you whether the deal still
+                  works once you leave.
                 </p>
                 <p>
                   Garrison Risk Review is that same process, formalized, so
@@ -64,23 +64,27 @@ export default function AboutPage() {
               </div>
 
               <div className="mt-10">
-                <CTAButton href="/get-started">Get Your Risk Memo</CTAButton>
+                <CTAButton href="/get-started">Get Your Underwriting Report</CTAButton>
               </div>
             </Reveal>
 
             <Reveal delay={0.1} className="space-y-4">
-              <div className="aspect-square w-full rounded-sm border border-dashed border-navy-900/20 bg-navy-50" />
-              <PlaceholderNote>
-                Founder headshot and full name to be added.
-              </PlaceholderNote>
-              <PlaceholderNote>
-                Service branch, unit, and specific credentials to be
-                confirmed before publishing final copy.
-              </PlaceholderNote>
-              <PlaceholderNote>
-                Veteran-owned business registration details to be added
-                here.
-              </PlaceholderNote>
+              <div className="relative aspect-square w-full overflow-hidden rounded-sm border border-navy-900/10">
+                <Image
+                  src="/images/founder.jpg"
+                  alt="Stone McGilvra Sawyer, Garrison Risk Review founder, active-duty Engineer Officer and West Point graduate"
+                  fill
+                  sizes="(min-width: 1024px) 33vw, 100vw"
+                  className="object-cover object-top"
+                  priority
+                />
+              </div>
+              <div>
+                <p className="font-display text-base font-bold text-navy-900">
+                  Stone McGilvra Sawyer
+                </p>
+                <p className="text-sm text-navy-900/50">Founder, Garrison Risk Review</p>
+              </div>
             </Reveal>
           </div>
         </Container>

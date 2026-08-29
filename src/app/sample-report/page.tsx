@@ -5,9 +5,9 @@ import { SectionKicker } from "@/components/SectionKicker";
 import { Reveal } from "@/components/Reveal";
 
 export const metadata: Metadata = {
-  title: "Sample Memo",
+  title: "Sample Report",
   description:
-    "Preview a sample Risk Memorandum covering tax spike analysis, rent coverage, market trends, and risk factors for a VA loan purchase.",
+    "Preview a sample VA Home Underwriting Report covering tax spike analysis, rent coverage, market trends, and risk factors for a VA loan purchase.",
 };
 
 const sections = [
@@ -37,18 +37,19 @@ const sections = [
   },
 ];
 
-export default function SampleMemoPage() {
+export default function SampleReportPage() {
   return (
     <>
       <section className="bg-navy-900 py-20 text-white">
         <Container>
-          <SectionKicker light>Sample Memo</SectionKicker>
+          <SectionKicker light>Sample Report</SectionKicker>
           <h1 className="mt-4 max-w-2xl text-balance font-display text-4xl font-bold tracking-tight sm:text-5xl">
             See what lands in your inbox.
           </h1>
           <p className="mt-5 max-w-xl text-white/70">
-            Below is a styled excerpt of the Risk Memorandum deliverable
-            using placeholder, redacted figures — not a real client file.
+            Below is a styled excerpt of the VA Home Underwriting Report
+            deliverable using placeholder, redacted figures — not a real
+            client file.
           </p>
         </Container>
       </section>
@@ -61,7 +62,7 @@ export default function SampleMemoPage() {
               <div className="flex flex-col gap-4 border-b border-navy-900/10 p-8 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-[10px] font-semibold tracking-[0.2em] text-navy-900/40 uppercase">
-                    Risk Memorandum &middot; Sample / Redacted
+                    VA Home Underwriting Report &middot; Sample / Redacted
                   </p>
                   <h2 className="mt-2 font-display text-xl font-bold text-navy-900">
                     Subject Property Review
@@ -106,8 +107,9 @@ export default function SampleMemoPage() {
                   Proceed with rate-lock contingency
                 </p>
                 <p className="mt-2 text-sm leading-relaxed text-navy-900/60">
-                  Full memo includes underwriter notes, comparable rent data,
-                  and a plain-language summary you can act on immediately.
+                  Full report includes underwriter notes, comparable rent
+                  data, and a plain-language summary you can act on
+                  immediately.
                 </p>
               </div>
             </div>
@@ -124,10 +126,10 @@ export default function SampleMemoPage() {
         <div className="blueprint-grid pointer-events-none absolute inset-0" />
         <Container className="relative text-center">
           <h2 className="mx-auto max-w-xl text-balance font-display text-3xl font-bold tracking-tight sm:text-4xl">
-            Ready to get your own Risk Memorandum?
+            Ready to get your own VA Home Underwriting Report?
           </h2>
           <div className="mt-8 flex justify-center">
-            <CTAButton href="/get-started">Get Your Risk Memo</CTAButton>
+            <CTAButton href="/get-started">Get Your Underwriting Report</CTAButton>
           </div>
         </Container>
       </section>

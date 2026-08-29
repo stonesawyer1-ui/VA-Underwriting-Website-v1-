@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { sendContactMessageEmail } from "@/lib/email";
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
@@ -32,6 +33,12 @@ export async function POST(request: NextRequest) {
     receivedAt: new Date().toISOString(),
     ...body,
   });
+
+  try {
+    await sendContactMessageEmail({ name: body.name!, email: body.email!, message: body.message! });
+  } catch (err) {
+    console.error("[contact] Failed to send notification email", err);
+  }
 
   return NextResponse.json({ success: true }, { status: 200 });
 }

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Container } from "@/components/Container";
-import { CTAButton } from "@/components/CTAButton";
+import { CheckoutButton } from "@/components/CheckoutButton";
 import { SectionKicker } from "@/components/SectionKicker";
 import { Reveal } from "@/components/Reveal";
 import { pricingTiers, comparisonRows } from "@/lib/site";
@@ -8,7 +8,7 @@ import { pricingTiers, comparisonRows } from "@/lib/site";
 export const metadata: Metadata = {
   title: "Pricing",
   description:
-    "Flat-fee VA loan risk review pricing. Recon, Sentry, and Command tiers — no subscriptions, no percentage of loan amount.",
+    "Flat-fee VA loan risk review pricing. Recon and Sentry tiers — no subscriptions, no percentage of loan amount.",
 };
 
 export default function PricingPage() {
@@ -21,16 +21,16 @@ export default function PricingPage() {
             Flat fee. Delivered as a PDF. No surprises.
           </h1>
           <p className="mt-5 max-w-xl text-white/70">
-            Every tier includes the core Risk Memorandum. Higher tiers add
-            market depth, financing scenarios, and direct access to ask
-            follow-up questions.
+            Every tier includes the core VA Home Underwriting Report. Sentry adds market
+            depth and covers more properties. Pay once, then submit your
+            properties — no account required.
           </p>
         </Container>
       </section>
 
-      <section className="bg-navy-50 py-20">
+      <section id="tiers" className="bg-navy-50 py-20">
         <Container>
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+          <div className="mx-auto grid max-w-3xl grid-cols-1 gap-6 sm:grid-cols-2">
             {pricingTiers.map((tier, i) => (
               <Reveal key={tier.id} delay={i * 0.1}>
                 <div
@@ -58,7 +58,7 @@ export default function PricingPage() {
                   <p
                     className={`mt-1 text-xs tracking-wide uppercase ${tier.highlighted ? "text-white/50" : "text-navy-900/40"}`}
                   >
-                    {tier.turnaround}
+                    {tier.properties}
                   </p>
                   <p
                     className={`mt-4 text-sm leading-relaxed ${tier.highlighted ? "text-white/70" : "text-navy-900/60"}`}
@@ -91,13 +91,13 @@ export default function PricingPage() {
                     ))}
                   </ul>
 
-                  <CTAButton
-                    href={`/get-started?tier=${tier.id}`}
+                  <CheckoutButton
+                    tierId={tier.id}
                     variant={tier.highlighted ? "primary" : "secondary"}
-                    className="mt-8 w-full"
+                    className="mt-8"
                   >
                     Choose {tier.name}
-                  </CTAButton>
+                  </CheckoutButton>
                 </div>
               </Reveal>
             ))}
@@ -115,7 +115,7 @@ export default function PricingPage() {
           </Reveal>
 
           <Reveal delay={0.1} className="mt-10 overflow-x-auto">
-            <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+            <table className="w-full min-w-[480px] border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-navy-900/10">
                   <th className="py-4 pr-4 font-semibold text-navy-900/50">
@@ -140,7 +140,6 @@ export default function PricingPage() {
                     <td className="py-4 pr-4 text-navy-900/70">{row.label}</td>
                     <td className="px-4 py-4 text-navy-900/80">{row.recon}</td>
                     <td className="px-4 py-4 text-navy-900/80">{row.sentry}</td>
-                    <td className="px-4 py-4 text-navy-900/80">{row.command}</td>
                   </tr>
                 ))}
               </tbody>
@@ -153,10 +152,15 @@ export default function PricingPage() {
         <div className="blueprint-grid pointer-events-none absolute inset-0" />
         <Container className="relative text-center">
           <h2 className="mx-auto max-w-xl text-balance font-display text-3xl font-bold tracking-tight sm:text-4xl">
-            Pick a tier and get your intake started in five minutes.
+            Pick a tier and pay securely — then submit your properties.
           </h2>
           <div className="mt-8 flex justify-center">
-            <CTAButton href="/get-started">Get Your Risk Memo</CTAButton>
+            <a
+              href="#tiers"
+              className="inline-flex items-center justify-center rounded-sm bg-red-600 px-6 py-3.5 text-sm font-semibold tracking-wide text-white uppercase transition-colors hover:bg-red-700"
+            >
+              Choose a Plan
+            </a>
           </div>
         </Container>
       </section>

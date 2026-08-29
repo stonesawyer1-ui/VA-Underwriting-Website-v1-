@@ -8,7 +8,7 @@ import { siteConfig } from "@/lib/site";
 const links = [
   { href: "/", label: "Home" },
   { href: "/pricing", label: "Pricing" },
-  { href: "/sample-memo", label: "Sample Memo" },
+  { href: "/sample-report", label: "Sample Report" },
   { href: "/about", label: "About" },
   { href: "/contact", label: "Contact" },
 ];
@@ -48,7 +48,7 @@ export function Nav() {
             href="/get-started"
             className="inline-flex items-center justify-center rounded-sm bg-red-600 px-5 py-2.5 text-sm font-semibold tracking-wide text-white uppercase transition-colors hover:bg-red-700"
           >
-            Get Your Risk Memo
+            Get Your Underwriting Report
           </Link>
         </div>
 
@@ -91,7 +91,7 @@ export function Nav() {
               onClick={() => setOpen(false)}
               className="mt-2 inline-flex items-center justify-center rounded-sm bg-red-600 px-5 py-3 text-sm font-semibold tracking-wide text-white uppercase"
             >
-              Get Your Risk Memo
+              Get Your Underwriting Report
             </Link>
           </nav>
         </div>
