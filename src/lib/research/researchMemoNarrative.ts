@@ -78,10 +78,16 @@ export async function researchMemoNarrative(params: {
     return { status: "not_configured" };
   }
 
-  const client = new Anthropic({ apiKey });
+  // Hard per-attempt timeout, and capped at 2 attempts (was 3) — this call
+  // runs sequentially AFTER researchProperty/researchRentEstimate, so it's
+  // the last thing standing between the intake route and the 300s ceiling
+  // Vercel enforces on this plan. A customer submission timing out with no
+  // email at all (as happened on 2026-08-30) is worse than a bounded,
+  // occasionally-thinner narrative section.
+  const client = new Anthropic({ apiKey, timeout: 50_000 });
 
   let lastErr: unknown;
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const response = await client.messages.create({
         model: "claude-opus-5",

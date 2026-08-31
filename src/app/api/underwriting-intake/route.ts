@@ -21,6 +21,13 @@ import { UnderwritingDetailDocument } from "@/lib/pdf/UnderwritingDetailDocument
 import { signEntitlement, verifyEntitlement } from "@/lib/entitlementToken";
 import { getStripeClient } from "@/lib/stripe";
 
+// This route runs three Claude research calls (two in parallel, one after)
+// plus PDF/Excel generation, which is genuinely slow. 300s is the ceiling
+// this plan allows a serverless function to run — request it explicitly
+// rather than relying on an implicit default, since a customer submission
+// timing out mid-flight means no email at all (see 2026-08-30 incident).
+export const maxDuration = 300;
+
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }

@@ -146,14 +146,21 @@ export async function researchProperty(
     return { status: "ok", result: cached.result, cached: true };
   }
 
-  const client = new Anthropic({ apiKey });
+  // Hard per-attempt timeout so a slow/stuck web-search round can't silently
+  // consume the whole request. The intake API route has a 300s ceiling on
+  // this plan; three research calls (this one, rent, and the narrative
+  // pass) share that budget, so each one is bounded well below it — a
+  // customer submission timing out with no email at all (as happened on
+  // 2026-08-30) is worse than a bounded, occasionally-lower-confidence result.
+  const client = new Anthropic({ apiKey, timeout: 70_000 });
 
   // Claude's JSON-after-web-search output is occasionally malformed in a way
   // sanitizeJsonText() can't repair (not just a stray control character, but
   // a genuinely different shape) — one retry clears most of these without
   // meaningfully raising cost, since it only fires on a parse failure.
+  // Capped at 2 attempts (was 3) to keep the worst case within budget.
   let lastErr: unknown;
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 2; attempt++) {
     try {
       return await runResearchAttempt(client, address, city, state, zip, knownFacts, cacheKey);
     } catch (err) {

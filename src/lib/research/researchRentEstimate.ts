@@ -102,10 +102,17 @@ export async function researchRentEstimate(
     return { status: "ok", result: cached.result, cached: true };
   }
 
-  const client = new Anthropic({ apiKey });
+  // Hard per-attempt timeout so a slow/stuck web-search round can't silently
+  // consume the whole request — this call runs in parallel with
+  // researchProperty, and both share the intake route's 300s ceiling with
+  // the narrative pass still to come after them. Capped at 2 attempts
+  // (was 3) for the same reason: a customer submission timing out with no
+  // email at all (as happened on 2026-08-30) is worse than a bounded,
+  // occasionally-lower-confidence result.
+  const client = new Anthropic({ apiKey, timeout: 70_000 });
 
   let lastErr: unknown;
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const response = await client.messages.create({
         model: "claude-opus-5",
