@@ -166,15 +166,21 @@ export async function researchProperty(
   // pass) share that budget, so each one is bounded well below it — a
   // customer submission timing out with no email at all (as happened on
   // 2026-08-30) is worse than a bounded, occasionally-lower-confidence result.
-  const client = new Anthropic({ apiKey, timeout: 70_000 });
+  //
+  // Raised from 70s to 110s, and retries dropped from 2 to 1, on
+  // 2026-08-31: real-world timing showed Claude routing web_search through a
+  // code_execution sandbox layer (extra latency per search round) rather
+  // than calling it directly, and this call's multi-round searches were
+  // genuinely — not transiently — taking longer than 70s. Retrying a
+  // systemically slow call at the same short timeout just fails twice
+  // instead of once; a single longer attempt gives it room to actually
+  // finish. A failed attempt now costs the customer nothing regardless
+  // (see the allowance-on-infra-failure fix), so the retry's old purpose —
+  // avoid an unnecessary hold — matters less than it used to.
+  const client = new Anthropic({ apiKey, timeout: 110_000 });
 
-  // Claude's JSON-after-web-search output is occasionally malformed in a way
-  // sanitizeJsonText() can't repair (not just a stray control character, but
-  // a genuinely different shape) — one retry clears most of these without
-  // meaningfully raising cost, since it only fires on a parse failure.
-  // Capped at 2 attempts (was 3) to keep the worst case within budget.
   let lastErr: unknown;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 1; attempt++) {
     try {
       return await runResearchAttempt(client, address, city, state, zip, knownFacts, cacheKey);
     } catch (err) {

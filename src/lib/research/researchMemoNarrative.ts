@@ -78,16 +78,20 @@ export async function researchMemoNarrative(params: {
     return { status: "not_configured" };
   }
 
-  // Hard per-attempt timeout, and capped at 2 attempts (was 3) — this call
-  // runs sequentially AFTER researchProperty/researchRentEstimate, so it's
-  // the last thing standing between the intake route and the 300s ceiling
-  // Vercel enforces on this plan. A customer submission timing out with no
-  // email at all (as happened on 2026-08-30) is worse than a bounded,
-  // occasionally-thinner narrative section.
-  const client = new Anthropic({ apiKey, timeout: 50_000 });
+  // Hard per-attempt timeout — this call runs sequentially AFTER
+  // researchProperty/researchRentEstimate, so it's the last thing standing
+  // between the intake route and the 300s ceiling Vercel enforces on this
+  // plan: property/rent get up to 110s each (parallel), leaving this call
+  // ~90s while still keeping ~100s of margin for PDF/Excel/email after it.
+  //
+  // Raised from 50s and dropped to 1 attempt (was 2) on 2026-08-31: same
+  // reasoning as researchProperty/researchRentEstimate — real-world timing
+  // showed genuinely slow web_search rounds (Claude routes them through a
+  // code_execution sandbox), not transient failures a retry would fix.
+  const client = new Anthropic({ apiKey, timeout: 90_000 });
 
   let lastErr: unknown;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 1; attempt++) {
     try {
       const response = await client.messages.create({
         model: "claude-sonnet-5",
