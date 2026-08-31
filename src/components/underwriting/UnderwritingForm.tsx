@@ -125,8 +125,15 @@ export function UnderwritingForm({
         <h2 className="mt-5 font-display text-2xl font-bold text-navy-900">Submission received</h2>
         <p className="mt-3 text-sm leading-relaxed text-navy-900/60">
           Your reference number is{" "}
-          <span className="font-mono font-semibold text-navy-900">{referenceId}</span>. We&apos;ll
-          confirm details by email and begin your full underwriting review.
+          <span className="font-mono font-semibold text-navy-900">{referenceId}</span>. We&apos;ve
+          started your full underwriting review.
+        </p>
+        <p className="mt-3 rounded-sm bg-navy-50 px-4 py-3 text-sm leading-relaxed text-navy-900/70">
+          You&apos;ll receive your VA Home Underwriting Report by email within{" "}
+          <span className="font-semibold text-navy-900">2 business days</span>. If you don&apos;t
+          see it in your inbox, please check your{" "}
+          <span className="font-semibold text-navy-900">spam or junk folder</span> before reaching
+          out to us.
         </p>
         {remaining > 0 ? (
           <>
