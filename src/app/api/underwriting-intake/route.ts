@@ -1,33 +1,29 @@
-import { NextRequest, NextResponse } from "next/server";
-import { renderToBuffer } from "@react-pdf/renderer";
-import {
-  sendUnderwritingInquiryEmail,
-  sendUnderwritingReportToCustomer,
-  sendHoldForReviewNotice,
-  sendCustomerReviewDelayNotice,
-} from "@/lib/email";
+import { NextRequest, NextResponse, after } from "next/server";
+import { sendUnderwritingInquiryEmail } from "@/lib/email";
 import type { ResultsSummary } from "@/lib/underwriting/calculations";
-import { formatCurrency } from "@/lib/underwriting/format";
 import type { UnderwritingFormData } from "@/lib/underwriting/types";
-import { researchProperty } from "@/lib/research/researchProperty";
-import { researchRentEstimate } from "@/lib/research/researchRentEstimate";
-import { researchMemoNarrative } from "@/lib/research/researchMemoNarrative";
-import { resolveTaxInputs, resolveYearlyInsurance, resolveMonthlyRent, buildEngineInputs } from "@/lib/pipeline/buildEngineInputs";
-import { computeUnderwriting } from "@/lib/workbook/computeUnderwriting";
-import { fillWorkbookXlsx } from "@/lib/workbook/fillWorkbookXlsx";
-import { evaluateConfidenceGate } from "@/lib/confidenceGate";
-import { getTaxDisclaimer } from "@/lib/underwriting/taxDisclaimers";
-import { UnderwritingReportDocument, type UnderwritingReportData } from "@/lib/pdf/UnderwritingReportDocument";
-import { UnderwritingDetailDocument } from "@/lib/pdf/UnderwritingDetailDocument";
 import { signEntitlement, verifyEntitlement } from "@/lib/entitlementToken";
-import { getStripeClient } from "@/lib/stripe";
+import { createJob, isJobStoreConfigured, type ProcessingJob } from "@/lib/jobStore";
+import { runJobAttempt } from "@/lib/pipeline/processSubmission";
 
-// This route runs three Claude research calls (two in parallel, one after)
-// plus PDF/Excel generation, which is genuinely slow. 300s is the ceiling
-// this plan allows a serverless function to run — request it explicitly
-// rather than relying on an implicit default, since a customer submission
-// timing out mid-flight means no email at all (see 2026-08-30 incident).
-export const maxDuration = 300;
+// The research -> compute -> PDF/Excel -> delivery pipeline (see
+// processSubmission.ts) is genuinely slow, and Vercel force-kills any
+// serverless function once its maxDuration elapses, no exceptions. As of
+// 2026-08-31 this route no longer makes the customer's browser wait for
+// that pipeline at all: it responds as soon as the submission is validated
+// and recorded, and runs the actual work via Next's after() — which keeps
+// the invocation alive past the response, still bounded by this same
+// maxDuration. If a submission is slow enough to hit that wall anyway, it
+// was already persisted as "processing" before any slow work started, so
+// the Vercel Cron sweep (/api/process-pending, see vercel.json) picks it up
+// and keeps retrying — no submission is silently lost, and none is ever
+// double-charged, regardless of how long research takes.
+//
+// 800s reflects the Pro + Fluid Compute ceiling (upgraded 2026-08-31, up
+// from Hobby's hard 300s) — most submissions still finish in well under a
+// minute of that, but the rare slow one now gets much more room before it
+// even needs a retry at all.
+export const maxDuration = 800;
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
@@ -35,14 +31,6 @@ function isNonEmptyString(value: unknown): value is string {
 
 function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-}
-
-/** e.g. " (Unit 1: 3bd/2ba, Unit 2: 2bd/1ba)" — blank unless at least one unit has a real value, so a duplex the buyer left blank still just shows the plain total bed/bath line. */
-function unitBreakdownSuffix(units: { beds: number | ""; baths: number | "" }[]): string {
-  const meaningful = units.filter((u) => u.beds !== "" || u.baths !== "");
-  if (meaningful.length === 0) return "";
-  const parts = units.map((u, i) => `Unit ${i + 1}: ${u.beds || "?"}bd/${u.baths || "?"}ba`);
-  return ` (${parts.join(", ")})`;
 }
 
 export async function POST(request: NextRequest) {
@@ -85,50 +73,15 @@ export async function POST(request: NextRequest) {
   if (!isNonEmptyString(rawToken)) {
     return NextResponse.json({ error: "Missing payment confirmation. Choose a plan from /pricing first." }, { status: 402 });
   }
-  const verifiedEntitlement = verifyEntitlement(rawToken);
-  if (!verifiedEntitlement) {
+  const entitlement = verifyEntitlement(rawToken);
+  if (!entitlement) {
     return NextResponse.json({ error: "We couldn't verify your payment for this submission." }, { status: 402 });
   }
-  // A `const`, non-null alias so the chargeAllowance() closure below doesn't
-  // need to re-check for null — TS's flow narrowing on `entitlement` doesn't
-  // carry into a nested function declaration, but this binding is provably
-  // never reassigned, so its non-null type is sound everywhere it's used.
-  const entitlement = verifiedEntitlement;
   if (entitlement.used >= entitlement.allowance) {
     return NextResponse.json(
       { error: `You've already used all ${entitlement.allowance} property reviews on this plan.` },
       { status: 402 },
     );
-  }
-  // Defaults to the UNCHARGED token — a submission only ever consumes an
-  // allowance slot when chargeAllowance() below actually runs. This means an
-  // infrastructure failure (Anthropic out of credits, a crash, anything on
-  // our end) never costs the customer one of their paid reviews; only a
-  // genuinely delivered report or a legitimate data-quality hold does. See
-  // the 2026-08-31 incident (epskinner20@gmail.com) where this had to be
-  // fixed by hand in Stripe after the fact — this makes that self-correcting.
-  let nextToken = signEntitlement(entitlement);
-  const stripe = getStripeClient();
-
-  async function chargeAllowance(): Promise<void> {
-    const newUsedCount = entitlement.used + 1;
-    nextToken = signEntitlement({ ...entitlement, used: newUsedCount });
-
-    // Persist the incremented count on the Stripe Checkout Session itself so
-    // a customer can't bypass their plan's allowance by simply revisiting
-    // /get-started?session_id=... — that page reads this value fresh on
-    // every load instead of trusting a client-supplied token. This is a
-    // real-money guard: without it, a single paid session could generate
-    // unlimited reports (each one a real research + email cost) for free.
-    if (stripe && entitlement.stripeSessionId !== "demo") {
-      try {
-        await stripe.checkout.sessions.update(entitlement.stripeSessionId, {
-          metadata: { used: String(newUsedCount) },
-        });
-      } catch (err) {
-        console.error("[underwriting-intake] Failed to persist usage count to Stripe session", err);
-      }
-    }
   }
 
   const referenceId = `GRR-${Date.now().toString(36).toUpperCase()}`;
@@ -147,214 +100,38 @@ export async function POST(request: NextRequest) {
     console.error("[underwriting-intake] Failed to send notification email", err);
   }
 
-  // Stage B: Claude research -> real workbook computation -> confidence gate -> PDFs -> delivery.
-  // Runs best-effort; a failure here never blocks the customer's initial submission response.
-  try {
-    // All three research calls run in parallel from the start, sharing one
-    // wait instead of stacking narrative after tax/rent — narrative only
-    // used the computed cash-flow numbers for light phrasing consistency,
-    // never as something its own research substantively needs, so there's
-    // no real correctness cost to starting it before compute finishes.
-    // Roughly halves typical and worst-case latency (2026-08-31).
-    const isCondo = formData.property.propertyType === "condo";
-    const [research, rentResearch, narrative] = await Promise.all([
-      researchProperty(
-        formData.property.address,
-        formData.property.city,
-        formData.property.state,
-        formData.property.zip,
-        {
-          sqft: typeof formData.property.sqft === "number" ? formData.property.sqft : undefined,
-          beds: typeof formData.property.beds === "number" ? formData.property.beds : undefined,
-          baths: typeof formData.property.baths === "number" ? formData.property.baths : undefined,
-          yearBuilt: typeof formData.property.yearBuilt === "number" ? formData.property.yearBuilt : undefined,
-        },
-      ),
-      researchRentEstimate(formData.property.address, formData.property.city, formData.property.state, formData.property.zip, {
-        sqft: typeof formData.property.sqft === "number" ? formData.property.sqft : undefined,
-        beds: typeof formData.property.beds === "number" ? formData.property.beds : undefined,
-        baths: typeof formData.property.baths === "number" ? formData.property.baths : undefined,
-        // Only sent when at least one unit row has a real value — an empty
-        // duplex/triplex/fourplex breakdown (buyer left it blank) falls back
-        // to the same single-blended-comp behavior as before this feature.
-        units: formData.property.units.some((u) => u.beds !== "" || u.baths !== "")
-          ? formData.property.units.map((u) => ({
-              beds: typeof u.beds === "number" ? u.beds : undefined,
-              baths: typeof u.baths === "number" ? u.baths : undefined,
-            }))
-          : undefined,
-      }),
-      researchMemoNarrative({
-        address: formData.property.address,
-        city: formData.property.city,
-        state: formData.property.state,
-        zip: formData.property.zip,
-        isCondo,
-        // computedContext omitted — not available yet since compute hasn't
-        // run; see the optional-param comment in researchMemoNarrative.ts.
-      }),
-    ]);
+  const now = new Date().toISOString();
+  const job: ProcessingJob = {
+    referenceId,
+    status: "processing",
+    formData,
+    entitlement,
+    attempts: 1,
+    createdAt: now,
+    lastAttemptAt: now,
+    notifiedProcessingDelay: false,
+  };
 
-    const resolvedTax = resolveTaxInputs(formData, research);
-    const insurance = resolveYearlyInsurance(formData, research);
-    const rent = resolveMonthlyRent(formData, rentResearch);
-
-    const gate = evaluateConfidenceGate(research, rentResearch, formData.rentEstimate.confidence, insurance.source, rent.source);
-
-    // An outright research failure (API down, out of credits, network error)
-    // is on us, not a genuine gap in the data — never charge the customer's
-    // allowance for it. A low-confidence-but-successful result (e.g. no rent
-    // comps found) is a real data-quality hold and does consume a slot, same
-    // as a fully delivered report, since a human will still complete it.
-    const isInfrastructureFault =
-      research.status === "error" ||
-      research.status === "not_configured" ||
-      rentResearch.status === "error" ||
-      rentResearch.status === "not_configured";
-
-    if (!gate.passed) {
-      if (!isInfrastructureFault) {
-        await chargeAllowance();
-      }
-      await sendHoldForReviewNotice({
-        referenceId,
-        reasons: gate.reasons,
-        customerEmail: formData.customer.email,
-        propertyAddress: formData.property.address,
-      });
-      // The success screen promises "within 1 hour" — a held submission
-      // can't meet that, so the customer gets an honest heads-up instead of
-      // silence past the promised window (see 2026-08-31 delivery-time change).
-      try {
-        await sendCustomerReviewDelayNotice({
-          referenceId,
-          customerEmail: formData.customer.email,
-          customerName: formData.customer.name,
-          isInfrastructureFault,
-        });
-      } catch (err) {
-        console.error("[underwriting-intake] Failed to send customer review-delay notice", err);
-      }
-      return NextResponse.json({ success: true, referenceId, nextToken }, { status: 200 });
-    }
-
-    await chargeAllowance();
-
-    const engineInputs = buildEngineInputs(formData, research, rentResearch, resolvedTax);
-    const outputs = await computeUnderwriting(engineInputs);
-
-    const researchResult = research.status === "ok" ? research.result : null;
-    const rentResearchResult = rentResearch.status === "ok" ? rentResearch.result : null;
-    const dealNumbers = outputs.monthlyDealNumbers;
-    const numberOf = (key: string): number => {
-      const v = dealNumbers[key];
-      return typeof v === "number" ? v : 0;
-    };
-
-    // narrative already resolved above, in parallel with research/rentResearch.
-    const narrativeResult = narrative.status === "ok" ? narrative.result : null;
-    if (narrative.status === "error") {
-      console.error("[underwriting-intake] Memo narrative research failed — proceeding without it", narrative.message);
-    }
-
-    const reportData: UnderwritingReportData = {
-      propertyAddressLine: `${formData.property.address}, ${formData.property.city}, ${formData.property.state} ${formData.property.zip}`,
-      county: formData.property.county,
-      propertyTypeLine: `${formData.property.propertyType.replace(/_/g, " ")}, ${formData.property.beds || "?"} bed / ${formData.property.baths || "?"} bath${unitBreakdownSuffix(formData.property.units)}, ${formData.property.sqft || "?"} sf, built ${formData.property.yearBuilt || "?"}`,
-      isCondo,
-      preparedFor: formData.customer.name || "Buyer",
-      dateOfMemo: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
-      underwritingSource: `Garrison Risk Review automated underwriting pipeline (${referenceId}) — filled workbook attached`,
-      purchasePrice: engineInputs.property.price,
-      loanAmount: typeof outputs.vaLoanNumbers.totalLoanAmount === "number" ? outputs.vaLoanNumbers.totalLoanAmount : 0,
-      interestRatePct: engineInputs.financing.interestRate,
-      occupancyStatus: formData.property.ownershipStatus.replace(/_/g, " "),
-      pcsNote: formData.customer.targetPcsDate || "Not specified",
-
-      hasOwnerRentalSplit: outputs.hasOwnerRentalSplit,
-      ownerOccupiedAnnualTax: outputs.hasOwnerRentalSplit ? numberOf("ownerOccupiedAnnualTax") : null,
-      rentalAnnualTax: outputs.hasOwnerRentalSplit ? numberOf("rentalAnnualTax") : numberOf("annualTax"),
-      taxIncreaseAnnual: outputs.hasOwnerRentalSplit ? numberOf("taxIncreaseOnConversion") : null,
-      taxInsights: researchResult?.taxInsights ?? [],
-      taxDisclaimer: getTaxDisclaimer(engineInputs.taxModel, formData.property.state),
-
-      monthlyPI: numberOf("monthlyPI"),
-      monthlyPropertyTax: numberOf("monthlyPropertyTax"),
-      monthlyInsurance: numberOf("monthlyInsurance"),
-      monthlyHoa: numberOf("monthlyHoa"),
-      totalPITI: numberOf("totalMonthlyPITI"),
-      vacancyAllowancePct: engineInputs.vacancyAllowancePct,
-      runningCostsPct: engineInputs.runningCostsPct,
-      runningCostsAmount: numberOf("runningCostsAmount"),
-      rentUsed: engineInputs.property.expectedMonthlyRent,
-      rentConfidenceLabel:
-        rent.source === "research"
-          ? `${rentResearchResult?.confidence ?? "unknown"} confidence (research)${rentResearchResult?.confidenceNote ? ` — ${rentResearchResult.confidenceNote}` : ""}`
-          : rent.source === "regional_average"
-            ? "regional average estimate — not live comps for this address"
-            : `${formData.rentEstimate.confidence} confidence (buyer estimate)`,
-      rentAfterVacancy: numberOf("rentAfterVacancy"),
-      moneyLeftOverMonthly: numberOf("moneyLeftOverMonthly"),
-      moneyLeftOverYearly: numberOf("moneyLeftOverYearly"),
-      cashOnCashPct: typeof dealNumbers.cashOnCashPct === "number" ? dealNumbers.cashOnCashPct * 100 : 0,
-      capRatePct: typeof dealNumbers.capRatePct === "number" ? dealNumbers.capRatePct : 0,
-      rentComps: rentResearchResult?.comps ?? [],
-
-      entitlementFirstUse: outputs.vaLoanNumbers.isFirstTimeUse === "Yes",
-      entitlementAvailable: typeof outputs.vaLoanNumbers.entitlementRemaining === "number" ? outputs.vaLoanNumbers.entitlementRemaining : 0,
-      fundingFeeWaived: formData.customer.vaDisabilityRating,
-
-      condoApproval: narrativeResult?.condoApproval ?? null,
-      marketTrends: narrativeResult?.marketTrends ?? null,
-      positiveFactors: narrativeResult?.positiveFactors ?? [],
-      marketRiskRating: narrativeResult?.marketRiskRating ?? null,
-      fundingFeeRatePct: typeof outputs.vaLoanNumbers.fundingFeeRatePct === "number" ? outputs.vaLoanNumbers.fundingFeeRatePct : 0,
-
-      referenceId,
-    };
-
-    const [reportPdf, underwritingPdf, workbookXlsx] = await Promise.all([
-      renderToBuffer(UnderwritingReportDocument(reportData)),
-      renderToBuffer(
-        UnderwritingDetailDocument({
-          referenceId,
-          generatedAt: new Date().toLocaleDateString("en-US"),
-          property: engineInputs.property,
-          financing: engineInputs.financing,
-          outputs,
-        }),
-      ),
-      fillWorkbookXlsx({
-        inputs: engineInputs,
-        outputs,
-        taxFieldSources: resolvedTax.fieldSources,
-        research,
-        insuranceSource: insurance.source,
-        insuranceNote: insurance.note,
-        rentSource: rent.source,
-        rentNote: rent.note,
-      }),
-    ]);
-
-    // Audit trail: the full research response alongside the generated file,
-    // so a wrong or stale figure can be traced back to what Claude returned.
-    console.log("[underwriting-intake] Research audit log", {
-      referenceId,
-      research: research.status === "ok" ? research.result.rawResponse : research,
-      rentResearch,
-    });
-
-    await sendUnderwritingReportToCustomer({
-      customerEmail: formData.customer.email,
-      customerName: formData.customer.name,
-      referenceId,
-      reportPdf: Buffer.from(reportPdf),
-      underwritingPdf: Buffer.from(underwritingPdf),
-      workbookXlsx,
-    });
-  } catch (err) {
-    console.error("[underwriting-intake] Stage B pipeline failed", err);
+  // Persisted BEFORE any slow work starts — this is the durability guarantee.
+  // If this invocation gets killed mid-pipeline, the job already exists in
+  // Redis with status "processing" and the sweep will find and retry it.
+  // A no-op if Upstash isn't configured (see jobStore.ts) — the pipeline
+  // still runs below via after(), just without retry/recovery if it fails.
+  if (isJobStoreConfigured()) {
+    await createJob(job);
   }
 
-  return NextResponse.json({ success: true, referenceId, nextToken }, { status: 200 });
+  // Runs after the response below is sent, but within the same invocation —
+  // the customer's browser is never blocked on research/PDF generation, no
+  // matter how long it takes (up to this route's own 300s ceiling).
+  after(async () => {
+    await runJobAttempt(job);
+  });
+
+  // The allowance shown here reflects the token as verified above (not yet
+  // charged) — that's fine: /get-started re-reads the authoritative "used"
+  // count fresh from the Stripe Checkout Session's own metadata rather than
+  // trusting this client-held token, so this value is a convenience, not the
+  // source of truth for allowance enforcement.
+  return NextResponse.json({ success: true, referenceId, nextToken: signEntitlement(entitlement) }, { status: 200 });
 }

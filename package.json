@@ -11,6 +11,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.116.0",
     "@react-pdf/renderer": "^4.6.0",
+    "@upstash/redis": "^1.38.3",
     "exceljs": "^4.4.0",
     "framer-motion": "^13.0.0",
     "hyperformula": "^3.4.0",

@@ -179,6 +179,43 @@ export async function sendCustomerReviewDelayNotice(params: {
   });
 }
 
+/**
+ * Sent once, the first time a submission doesn't finish within its initial
+ * background attempt and gets left for the retry sweep — distinct from
+ * sendCustomerReviewDelayNotice, which is the *final* word (a genuine
+ * data-quality hold, or all retries exhausted). This one is reassurance
+ * mid-flight: nothing is wrong, it just needs another pass, still same-day.
+ */
+export async function sendStillProcessingNotice(params: {
+  referenceId: string;
+  customerEmail: string;
+  customerName: string;
+}) {
+  const client = getClient();
+  if (!client) return;
+
+  const html = `
+    <div style="font-family:sans-serif;max-width:560px;margin:0 auto;">
+      <h2 style="color:#0a1f44;">Still working on your report — ${params.referenceId}</h2>
+      <p style="color:#222;line-height:1.6;">
+        ${params.customerName ? `Hi ${params.customerName},` : "Hi,"}<br/><br/>
+        Most reports are ready within an hour, but yours is taking a bit longer than usual —
+        nothing is wrong, and there's nothing you need to do. We're continuing to work on it
+        and you'll have your VA Home Underwriting Report within one business day.
+      </p>
+      <p style="color:#888;font-size:12px;">Reference: ${params.referenceId}</p>
+    </div>
+  `;
+
+  await client.emails.send({
+    from: FROM_ADDRESS,
+    to: params.customerEmail,
+    replyTo: siteConfig.notifyEmail,
+    subject: `Your VA Home Underwriting Report is still processing (${params.referenceId})`,
+    html,
+  });
+}
+
 export async function sendContactMessageEmail(body: { name: string; email: string; message: string }) {
   const client = getClient();
   if (!client) return;
