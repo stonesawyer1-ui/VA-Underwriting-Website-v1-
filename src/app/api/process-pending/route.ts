@@ -2,26 +2,35 @@ import { NextRequest, NextResponse } from "next/server";
 import { getJob, listPendingJobIds, saveJob, removePendingJob, isJobStoreConfigured, type ProcessingJob } from "@/lib/jobStore";
 import { runJobAttempt } from "@/lib/pipeline/processSubmission";
 
-// Vercel Pro + Fluid Compute raises the serverless ceiling from 300s to
-// ~800s (2026-08-31) — this route benefits directly, since a longer ceiling
-// here means fewer submissions ever need more than one retry pass at all.
+// Matches the intake route's maxDuration (see its comment) so a background
+// retry gets the same full time budget as the initial attempt.
 export const maxDuration = 800;
 
-// Comfortably longer than this route's own maxDuration (800s ≈ 13.3min),
-// so a previous attempt that's still genuinely in flight is never picked up
-// again by an overlapping sweep run — this app has no distributed locking,
-// so this timestamp guard is the whole concurrency story, and it only needs
-// to work for single-digit-per-day submission volume.
-const STALE_THRESHOLD_MS = 15 * 60 * 1000;
+// Comfortably longer than this route's own maxDuration (800s ≈ 13.3min), so a
+// previous attempt that's still genuinely in flight is never picked up again
+// by an overlapping sweep run — this app has no distributed locking, so this
+// timestamp guard is the whole concurrency story, and it only needs to work
+// for single-digit-per-day submission volume.
+const STALE_THRESHOLD_MS = 18 * 60 * 1000;
 
 /**
- * Called every 5 minutes by Vercel Cron (see vercel.json). Vercel
- * automatically sends `Authorization: Bearer <value>` using the project's
- * own CRON_SECRET env var for its own scheduled invocations — the same
- * value verified here, so this also works for a manual curl-triggered retry
- * during testing.
+ * Called every 5 minutes by Vercel Cron (see vercel.json). Vercel Cron
+ * invokes its path with a GET request — a POST-only handler here 405s on
+ * every single tick (caught 2026-08-31 in runtime logs). GET is the real
+ * entry point; POST is kept too so a manual curl-triggered retry during
+ * testing can use either verb. Vercel automatically sends
+ * `Authorization: Bearer <value>` using the project's own CRON_SECRET env
+ * var for its own scheduled invocations — the same value verified below.
  */
+export async function GET(request: NextRequest) {
+  return handleSweep(request);
+}
+
 export async function POST(request: NextRequest) {
+  return handleSweep(request);
+}
+
+async function handleSweep(request: NextRequest) {
   const configuredSecret = process.env.CRON_SECRET;
   if (!configuredSecret) {
     console.error("[process-pending] CRON_SECRET is not set — refusing to run an unauthenticated sweep.");
