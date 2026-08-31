@@ -211,7 +211,7 @@ async function runResearchAttempt(
       model: "claude-sonnet-5",
       max_tokens: 8192,
       system: SYSTEM_PROMPT,
-      tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 6 }],
+      tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 3 }],
       messages: [
         {
           role: "user",

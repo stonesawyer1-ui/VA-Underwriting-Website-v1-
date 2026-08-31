@@ -140,7 +140,7 @@ export async function researchRentEstimate(
             model: "claude-sonnet-5",
             max_tokens: 4096,
             system: SYSTEM_PROMPT,
-            tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 10 }],
+            tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 5 }],
             messages: [
               {
                 role: "user",

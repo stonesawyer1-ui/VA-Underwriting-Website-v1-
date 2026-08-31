@@ -107,7 +107,7 @@ export async function researchMemoNarrative(params: {
             model: "claude-sonnet-5",
             max_tokens: 4096,
             system: SYSTEM_PROMPT,
-            tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 8 }],
+            tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 4 }],
             messages: [
               {
                 role: "user",
