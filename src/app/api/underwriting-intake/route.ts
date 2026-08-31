@@ -150,10 +150,14 @@ export async function POST(request: NextRequest) {
   // Stage B: Claude research -> real workbook computation -> confidence gate -> PDFs -> delivery.
   // Runs best-effort; a failure here never blocks the customer's initial submission response.
   try {
-    // Tax/insurance research and rent-comp research run in parallel with
-    // their own separate search budgets — bundled together, rent comps kept
-    // losing out on search budget to tax-district lookups.
-    const [research, rentResearch] = await Promise.all([
+    // All three research calls run in parallel from the start, sharing one
+    // wait instead of stacking narrative after tax/rent — narrative only
+    // used the computed cash-flow numbers for light phrasing consistency,
+    // never as something its own research substantively needs, so there's
+    // no real correctness cost to starting it before compute finishes.
+    // Roughly halves typical and worst-case latency (2026-08-31).
+    const isCondo = formData.property.propertyType === "condo";
+    const [research, rentResearch, narrative] = await Promise.all([
       researchProperty(
         formData.property.address,
         formData.property.city,
@@ -179,6 +183,15 @@ export async function POST(request: NextRequest) {
               baths: typeof u.baths === "number" ? u.baths : undefined,
             }))
           : undefined,
+      }),
+      researchMemoNarrative({
+        address: formData.property.address,
+        city: formData.property.city,
+        state: formData.property.state,
+        zip: formData.property.zip,
+        isCondo,
+        // computedContext omitted — not available yet since compute hasn't
+        // run; see the optional-param comment in researchMemoNarrative.ts.
       }),
     ]);
 
@@ -238,21 +251,7 @@ export async function POST(request: NextRequest) {
       return typeof v === "number" ? v : 0;
     };
 
-    const isCondo = formData.property.propertyType === "condo";
-    const taxIncreaseAnnual = outputs.hasOwnerRentalSplit ? numberOf("taxIncreaseOnConversion") : 0;
-    const moneyLeftOverMonthly = numberOf("moneyLeftOverMonthly");
-    const computedContext = outputs.hasOwnerRentalSplit
-      ? `Tax increases ${formatCurrency(taxIncreaseAnnual)}/yr on conversion to a rental. Modeled cash flow is ${formatCurrency(moneyLeftOverMonthly)}/mo.`
-      : `No owner-vs-rental tax gap under this state's mechanism. Modeled cash flow is ${formatCurrency(moneyLeftOverMonthly)}/mo.`;
-
-    const narrative = await researchMemoNarrative({
-      address: formData.property.address,
-      city: formData.property.city,
-      state: formData.property.state,
-      zip: formData.property.zip,
-      isCondo,
-      computedContext,
-    });
+    // narrative already resolved above, in parallel with research/rentResearch.
     const narrativeResult = narrative.status === "ok" ? narrative.result : null;
     if (narrative.status === "error") {
       console.error("[underwriting-intake] Memo narrative research failed — proceeding without it", narrative.message);

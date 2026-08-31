@@ -71,7 +71,15 @@ export async function researchMemoNarrative(params: {
   state: string;
   zip: string;
   isCondo: boolean;
-  computedContext: string;
+  /**
+   * Optional — omitted when this call runs in parallel with the tax/rent
+   * research instead of after it (the normal case as of 2026-08-31, so all
+   * three research calls share one wait instead of stacking two of them).
+   * The narrative only ever used this for light phrasing consistency, never
+   * as something its own research substantively depends on, so a generic
+   * placeholder here costs nothing real.
+   */
+  computedContext?: string;
 }): Promise<MemoNarrativeOutcome> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -101,7 +109,10 @@ export async function researchMemoNarrative(params: {
         messages: [
           {
             role: "user",
-            content: `Address: ${params.address}\nCity: ${params.city}\nState: ${params.state}\nZip: ${params.zip}\nIs condo: ${params.isCondo}\nAlready-calculated context: ${params.computedContext}`,
+            content: `Address: ${params.address}\nCity: ${params.city}\nState: ${params.state}\nZip: ${params.zip}\nIs condo: ${params.isCondo}\nAlready-calculated context: ${
+              params.computedContext ??
+              "Not yet calculated — this runs in parallel with that step. Keep positive-factor phrasing general (e.g. 'a moderate tax swing relative to other states') rather than citing a specific dollar figure you don't have."
+            }`,
           },
         ],
       });
