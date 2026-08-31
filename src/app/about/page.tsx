@@ -56,11 +56,6 @@ export default function AboutPage() {
                   loans, PCS timelines, and 2-4 unit house-hacking — not a
                   generic rental calculator.
                 </p>
-                <p>
-                  This is a small, veteran-owned operation. I&apos;d rather be
-                  upfront about that than dress it up as something bigger than
-                  it is.
-                </p>
               </div>
 
               <div className="mt-10">
