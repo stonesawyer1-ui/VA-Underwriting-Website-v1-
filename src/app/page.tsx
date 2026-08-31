@@ -226,7 +226,7 @@ export default function HomePage() {
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-white/70">
             Submit your property details today and get an independent Risk
-            Memorandum in as little as two business days.
+            Memorandum in as little as one hour.
           </p>
           <div className="mt-8 flex justify-center">
             <CTAButton href="/get-started">Get Your Underwriting Report</CTAButton>

@@ -47,8 +47,11 @@ export default function TermsPage() {
                   our intake form; we research the applicable tax rules,
                   comparable rents, and local market data, and deliver a VA
                   Home Underwriting Report as a PDF, along with a supporting
-                  Excel workbook, by email — typically within two business days
-                  of a complete submission.
+                  Excel workbook, by email — typically within one hour of a
+                  complete submission. A small number of submissions need a
+                  manual check on a specific number before we&apos;re
+                  comfortable sending the report; when that happens, we email
+                  you directly and deliver within one business day instead.
                 </p>
                 <p className="mt-3">
                   Current pricing:{" "}
@@ -112,7 +115,7 @@ export default function TermsPage() {
                 <p className="mt-3">We will issue a full refund if:</p>
                 <ul className="mt-3 list-inside list-disc space-y-2">
                   <li>You were charged but never received access to the intake form, or</li>
-                  <li>We are unable to deliver your report within a reasonable time (10 business days) of a complete submission, or</li>
+                  <li>We are unable to deliver your report within a reasonable time (2 business days) of a complete submission, or</li>
                   <li>You were charged in error or more than once for the same order.</li>
                 </ul>
                 <p className="mt-3">

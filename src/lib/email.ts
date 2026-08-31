@@ -132,6 +132,44 @@ export async function sendHoldForReviewNotice(params: {
   });
 }
 
+/**
+ * The customer-facing counterpart to sendHoldForReviewNotice — without this,
+ * a held submission left the customer with only the generic "within 1 hour"
+ * success-screen message and then silence, well past the promised window,
+ * with no explanation. This tells them honestly that their case needs a
+ * closer manual look and sets a real (still same-day) expectation instead.
+ */
+export async function sendCustomerReviewDelayNotice(params: {
+  referenceId: string;
+  customerEmail: string;
+  customerName: string;
+}) {
+  const client = getClient();
+  if (!client) return;
+
+  const html = `
+    <div style="font-family:sans-serif;max-width:560px;margin:0 auto;">
+      <h2 style="color:#0a1f44;">Your report needs a closer look — ${params.referenceId}</h2>
+      <p style="color:#222;line-height:1.6;">
+        ${params.customerName ? `Hi ${params.customerName},` : "Hi,"}<br/><br/>
+        Most reports are ready within an hour, but a few of the numbers on your property need a
+        manual check before we're comfortable sending the report — usually a local tax rate or
+        rent comp we want to confirm by hand rather than estimate. We're on it, and you'll have
+        your VA Home Underwriting Report within one business day.
+      </p>
+      <p style="color:#888;font-size:12px;">Reference: ${params.referenceId}</p>
+    </div>
+  `;
+
+  await client.emails.send({
+    from: FROM_ADDRESS,
+    to: params.customerEmail,
+    replyTo: siteConfig.notifyEmail,
+    subject: `Your VA Home Underwriting Report is taking a bit longer (${params.referenceId})`,
+    html,
+  });
+}
+
 export async function sendContactMessageEmail(body: { name: string; email: string; message: string }) {
   const client = getClient();
   if (!client) return;

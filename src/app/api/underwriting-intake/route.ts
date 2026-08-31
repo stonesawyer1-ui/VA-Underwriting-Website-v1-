@@ -4,6 +4,7 @@ import {
   sendUnderwritingInquiryEmail,
   sendUnderwritingReportToCustomer,
   sendHoldForReviewNotice,
+  sendCustomerReviewDelayNotice,
 } from "@/lib/email";
 import type { ResultsSummary } from "@/lib/underwriting/calculations";
 import { formatCurrency } from "@/lib/underwriting/format";
@@ -161,6 +162,18 @@ export async function POST(request: NextRequest) {
         customerEmail: formData.customer.email,
         propertyAddress: formData.property.address,
       });
+      // The success screen promises "within 1 hour" — a held submission
+      // can't meet that, so the customer gets an honest heads-up instead of
+      // silence past the promised window (see 2026-08-31 delivery-time change).
+      try {
+        await sendCustomerReviewDelayNotice({
+          referenceId,
+          customerEmail: formData.customer.email,
+          customerName: formData.customer.name,
+        });
+      } catch (err) {
+        console.error("[underwriting-intake] Failed to send customer review-delay notice", err);
+      }
       return NextResponse.json({ success: true, referenceId, nextToken }, { status: 200 });
     }
 
