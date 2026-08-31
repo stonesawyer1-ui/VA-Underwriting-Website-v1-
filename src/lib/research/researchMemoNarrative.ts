@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { extractJson } from "./jsonExtract";
+import { withHardDeadline } from "./hardDeadline";
 
 export type CondoApproval = {
   applicable: boolean;
@@ -86,36 +87,40 @@ export async function researchMemoNarrative(params: {
     return { status: "not_configured" };
   }
 
-  // Hard per-attempt timeout — this call runs sequentially AFTER
-  // researchProperty/researchRentEstimate, so it's the last thing standing
-  // between the intake route and the 300s ceiling Vercel enforces on this
-  // plan: property/rent get up to 110s each (parallel), leaving this call
-  // ~90s while still keeping ~100s of margin for PDF/Excel/email after it.
+  // This call now runs in parallel with researchProperty/researchRentEstimate
+  // (2026-08-31), not sequentially after them, so it shares the same 300s
+  // ceiling rather than getting whatever's left over.
   //
-  // Raised from 50s and dropped to 1 attempt (was 2) on 2026-08-31: same
-  // reasoning as researchProperty/researchRentEstimate — real-world timing
-  // showed genuinely slow web_search rounds (Claude routes them through a
-  // code_execution sandbox), not transient failures a retry would fix.
-  const client = new Anthropic({ apiKey, timeout: 90_000 });
+  // The SDK's own `timeout` option turned out NOT to be a reliable absolute
+  // deadline on its own — a real submission ran well past it without ever
+  // throwing, and Vercel's 300s ceiling killed the whole request instead.
+  // withHardDeadline() enforces a real one via AbortController; the
+  // client's own timeout stays as a secondary guard.
+  const client = new Anthropic({ apiKey, timeout: 150_000 });
 
   let lastErr: unknown;
   for (let attempt = 0; attempt < 1; attempt++) {
     try {
-      const response = await client.messages.create({
-        model: "claude-sonnet-5",
-        max_tokens: 4096,
-        system: SYSTEM_PROMPT,
-        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 8 }],
-        messages: [
+      const response = await withHardDeadline(150_000, (signal) =>
+        client.messages.create(
           {
-            role: "user",
-            content: `Address: ${params.address}\nCity: ${params.city}\nState: ${params.state}\nZip: ${params.zip}\nIs condo: ${params.isCondo}\nAlready-calculated context: ${
-              params.computedContext ??
-              "Not yet calculated — this runs in parallel with that step. Keep positive-factor phrasing general (e.g. 'a moderate tax swing relative to other states') rather than citing a specific dollar figure you don't have."
-            }`,
+            model: "claude-sonnet-5",
+            max_tokens: 4096,
+            system: SYSTEM_PROMPT,
+            tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 8 }],
+            messages: [
+              {
+                role: "user",
+                content: `Address: ${params.address}\nCity: ${params.city}\nState: ${params.state}\nZip: ${params.zip}\nIs condo: ${params.isCondo}\nAlready-calculated context: ${
+                  params.computedContext ??
+                  "Not yet calculated — this runs in parallel with that step. Keep positive-factor phrasing general (e.g. 'a moderate tax swing relative to other states') rather than citing a specific dollar figure you don't have."
+                }`,
+              },
+            ],
           },
-        ],
-      });
+          { signal },
+        ),
+      );
 
       const textBlocks = response.content.filter((b): b is Anthropic.TextBlock => b.type === "text");
       const fullText = textBlocks.map((b) => b.text).join("\n");

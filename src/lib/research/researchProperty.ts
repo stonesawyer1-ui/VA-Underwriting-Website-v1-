@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { extractJson } from "./jsonExtract";
 import { lookupTaxRate, taxRateEntryToResearchOutcome } from "./taxRateDatabase";
+import { withHardDeadline } from "./hardDeadline";
 
 export type FieldConfidence = "Confirmed" | "Estimated";
 
@@ -171,18 +172,22 @@ export async function researchProperty(
   // 2026-08-31: real-world timing showed Claude routing web_search through a
   // code_execution sandbox layer (extra latency per search round) rather
   // than calling it directly, and this call's multi-round searches were
-  // genuinely — not transiently — taking longer than 70s. Retrying a
-  // systemically slow call at the same short timeout just fails twice
-  // instead of once; a single longer attempt gives it room to actually
-  // finish. A failed attempt now costs the customer nothing regardless
-  // (see the allowance-on-infra-failure fix), so the retry's old purpose —
-  // avoid an unnecessary hold — matters less than it used to.
-  const client = new Anthropic({ apiKey, timeout: 110_000 });
+  // genuinely — not transiently — taking longer than 70s.
+  //
+  // 2026-08-31 follow-up: the SDK's own `timeout` option (below) turned out
+  // NOT to be a reliable absolute deadline on its own — a real submission
+  // ran well past 110s without it ever throwing, and the whole request was
+  // eventually killed by Vercel's 300s ceiling instead, the worst outcome.
+  // withHardDeadline() below enforces a real one via AbortController; the
+  // client's own timeout stays as a secondary guard.
+  const client = new Anthropic({ apiKey, timeout: 150_000 });
 
   let lastErr: unknown;
   for (let attempt = 0; attempt < 1; attempt++) {
     try {
-      return await runResearchAttempt(client, address, city, state, zip, knownFacts, cacheKey);
+      return await withHardDeadline(150_000, (signal) =>
+        runResearchAttempt(client, address, city, state, zip, knownFacts, cacheKey, signal),
+      );
     } catch (err) {
       lastErr = err;
       console.error(`[research] Attempt ${attempt + 1} failed`, err);
@@ -199,19 +204,23 @@ async function runResearchAttempt(
   zip: string,
   knownFacts: { sqft?: number; beds?: number; baths?: number; yearBuilt?: number },
   cacheKey: string,
+  signal: AbortSignal,
 ): Promise<ResearchOutcome> {
-  const response = await client.messages.create({
-    model: "claude-sonnet-5",
-    max_tokens: 8192,
-    system: SYSTEM_PROMPT,
-    tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 6 }],
-    messages: [
-      {
-        role: "user",
-        content: `Address: ${address}\nCity: ${city}\nState: ${state}\nZip: ${zip}\nKnown facts: ${JSON.stringify(knownFacts)}`,
-      },
-    ],
-  });
+  const response = await client.messages.create(
+    {
+      model: "claude-sonnet-5",
+      max_tokens: 8192,
+      system: SYSTEM_PROMPT,
+      tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 6 }],
+      messages: [
+        {
+          role: "user",
+          content: `Address: ${address}\nCity: ${city}\nState: ${state}\nZip: ${zip}\nKnown facts: ${JSON.stringify(knownFacts)}`,
+        },
+      ],
+    },
+    { signal },
+  );
 
   const textBlocks = response.content.filter((b): b is Anthropic.TextBlock => b.type === "text");
   const fullText = textBlocks.map((b) => b.text).join("\n");

@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { extractJson } from "./jsonExtract";
+import { withHardDeadline } from "./hardDeadline";
 
 export type RentComp = {
   address: string;
@@ -119,27 +120,37 @@ export async function researchRentEstimate(
   // real-world timing showed Claude routing web_search through a
   // code_execution sandbox layer (extra latency per round) rather than
   // calling it directly, and multi-round rent-comp searches were
-  // genuinely — not transiently — taking longer than 70s. Retrying a
-  // systemically slow call at the same short timeout just fails twice
-  // instead of once. A failed attempt now costs the customer nothing
-  // regardless (see the allowance-on-infra-failure fix).
-  const client = new Anthropic({ apiKey, timeout: 110_000 });
+  // genuinely — not transiently — taking longer than 70s. A failed attempt
+  // now costs the customer nothing regardless (see the
+  // allowance-on-infra-failure fix).
+  //
+  // Same-day follow-up: the SDK's own `timeout` option turned out NOT to be
+  // a reliable absolute deadline — a real submission ran well past it
+  // without ever throwing, and Vercel's 300s ceiling killed the whole
+  // request instead. withHardDeadline() enforces a real one via
+  // AbortController; the client's own timeout stays as a secondary guard.
+  const client = new Anthropic({ apiKey, timeout: 150_000 });
 
   let lastErr: unknown;
   for (let attempt = 0; attempt < 1; attempt++) {
     try {
-      const response = await client.messages.create({
-        model: "claude-sonnet-5",
-        max_tokens: 4096,
-        system: SYSTEM_PROMPT,
-        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 10 }],
-        messages: [
+      const response = await withHardDeadline(150_000, (signal) =>
+        client.messages.create(
           {
-            role: "user",
-            content: `Address: ${address}\nCity: ${city}\nState: ${state}\nZip: ${zip}\nKnown facts: ${JSON.stringify(knownFacts)}`,
+            model: "claude-sonnet-5",
+            max_tokens: 4096,
+            system: SYSTEM_PROMPT,
+            tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 10 }],
+            messages: [
+              {
+                role: "user",
+                content: `Address: ${address}\nCity: ${city}\nState: ${state}\nZip: ${zip}\nKnown facts: ${JSON.stringify(knownFacts)}`,
+              },
+            ],
           },
-        ],
-      });
+          { signal },
+        ),
+      );
 
       const textBlocks = response.content.filter((b): b is Anthropic.TextBlock => b.type === "text");
       const fullText = textBlocks.map((b) => b.text).join("\n");
