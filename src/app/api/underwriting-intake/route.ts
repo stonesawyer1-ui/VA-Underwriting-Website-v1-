@@ -37,6 +37,14 @@ function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
+/** e.g. " (Unit 1: 3bd/2ba, Unit 2: 2bd/1ba)" — blank unless at least one unit has a real value, so a duplex the buyer left blank still just shows the plain total bed/bath line. */
+function unitBreakdownSuffix(units: { beds: number | ""; baths: number | "" }[]): string {
+  const meaningful = units.filter((u) => u.beds !== "" || u.baths !== "");
+  if (meaningful.length === 0) return "";
+  const parts = units.map((u, i) => `Unit ${i + 1}: ${u.beds || "?"}bd/${u.baths || "?"}ba`);
+  return ` (${parts.join(", ")})`;
+}
+
 export async function POST(request: NextRequest) {
   let body: Record<string, unknown>;
 
@@ -162,6 +170,15 @@ export async function POST(request: NextRequest) {
         sqft: typeof formData.property.sqft === "number" ? formData.property.sqft : undefined,
         beds: typeof formData.property.beds === "number" ? formData.property.beds : undefined,
         baths: typeof formData.property.baths === "number" ? formData.property.baths : undefined,
+        // Only sent when at least one unit row has a real value — an empty
+        // duplex/triplex/fourplex breakdown (buyer left it blank) falls back
+        // to the same single-blended-comp behavior as before this feature.
+        units: formData.property.units.some((u) => u.beds !== "" || u.baths !== "")
+          ? formData.property.units.map((u) => ({
+              beds: typeof u.beds === "number" ? u.beds : undefined,
+              baths: typeof u.baths === "number" ? u.baths : undefined,
+            }))
+          : undefined,
       }),
     ]);
 
@@ -244,7 +261,7 @@ export async function POST(request: NextRequest) {
     const reportData: UnderwritingReportData = {
       propertyAddressLine: `${formData.property.address}, ${formData.property.city}, ${formData.property.state} ${formData.property.zip}`,
       county: formData.property.county,
-      propertyTypeLine: `${formData.property.propertyType.replace(/_/g, " ")}, ${formData.property.beds || "?"} bed / ${formData.property.baths || "?"} bath, ${formData.property.sqft || "?"} sf, built ${formData.property.yearBuilt || "?"}`,
+      propertyTypeLine: `${formData.property.propertyType.replace(/_/g, " ")}, ${formData.property.beds || "?"} bed / ${formData.property.baths || "?"} bath${unitBreakdownSuffix(formData.property.units)}, ${formData.property.sqft || "?"} sf, built ${formData.property.yearBuilt || "?"}`,
       isCondo,
       preparedFor: formData.customer.name || "Buyer",
       dateOfMemo: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),

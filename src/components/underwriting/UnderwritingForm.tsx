@@ -14,7 +14,7 @@ import {
 } from "./Field";
 import { ResultsPanel } from "./ResultsPanel";
 import { calculateResults } from "@/lib/underwriting/calculations";
-import { createDefaultFormData } from "@/lib/underwriting/defaults";
+import { createDefaultFormData, resizeUnitsForPropertyType, unitCountForPropertyType } from "@/lib/underwriting/defaults";
 import { DEFAULT_INSURANCE_MONTHLY_ESTIMATE, US_STATES, getStateModelId } from "@/lib/underwriting/constants";
 import type { LoanStatus, PriorVaLoan, UnderwritingFormData } from "@/lib/underwriting/types";
 import { formatCurrency } from "@/lib/underwriting/format";
@@ -440,7 +440,14 @@ export function UnderwritingForm({
               <SelectField
                 id="propertyType"
                 value={data.property.propertyType}
-                onChange={(v) => update("property", (p) => ({ ...p, propertyType: v as UnderwritingFormData["property"]["propertyType"] }))}
+                onChange={(v) => {
+                  const nextType = v as UnderwritingFormData["property"]["propertyType"];
+                  update("property", (p) => ({
+                    ...p,
+                    propertyType: nextType,
+                    units: resizeUnitsForPropertyType(p.units, nextType),
+                  }));
+                }}
                 options={[
                   { value: "single_family", label: "Single Family" },
                   { value: "duplex", label: "Duplex" },
@@ -450,16 +457,59 @@ export function UnderwritingForm({
                 ]}
               />
             </FieldShell>
-            <FieldShell label="Beds" htmlFor="beds">
+            <FieldShell label={unitCountForPropertyType(data.property.propertyType) > 0 ? "Beds (total)" : "Beds"} htmlFor="beds">
               <NumberField id="beds" value={data.property.beds} onChange={(v) => update("property", (p) => ({ ...p, beds: v }))} />
             </FieldShell>
-            <FieldShell label="Baths" htmlFor="baths">
+            <FieldShell label={unitCountForPropertyType(data.property.propertyType) > 0 ? "Baths (total)" : "Baths"} htmlFor="baths">
               <NumberField id="baths" value={data.property.baths} onChange={(v) => update("property", (p) => ({ ...p, baths: v }))} />
             </FieldShell>
             <FieldShell label="Sqft" htmlFor="sqft">
               <NumberField id="sqft" value={data.property.sqft} onChange={(v) => update("property", (p) => ({ ...p, sqft: v }))} />
             </FieldShell>
           </div>
+
+          {unitCountForPropertyType(data.property.propertyType) > 0 && (
+            <div className="rounded-sm border border-navy-900/10 bg-navy-50 p-4">
+              <p className="text-xs font-semibold tracking-wide text-navy-900/60 uppercase">
+                Per-unit breakdown (optional)
+              </p>
+              <p className="mt-1 text-xs text-navy-900/50">
+                Different unit sizes rent for different amounts — filling this in helps us find
+                more accurate rent comps per unit type and shows the breakdown on your report.
+              </p>
+              <div className="mt-3 space-y-3">
+                {data.property.units.map((unit, idx) => (
+                  <div key={idx} className="grid grid-cols-2 gap-3">
+                    <FieldShell label={`Unit ${idx + 1} beds`} htmlFor={`unit-${idx}-beds`}>
+                      <NumberField
+                        id={`unit-${idx}-beds`}
+                        value={unit.beds}
+                        onChange={(v) =>
+                          update("property", (p) => ({
+                            ...p,
+                            units: p.units.map((u, i) => (i === idx ? { ...u, beds: v } : u)),
+                          }))
+                        }
+                      />
+                    </FieldShell>
+                    <FieldShell label={`Unit ${idx + 1} baths`} htmlFor={`unit-${idx}-baths`}>
+                      <NumberField
+                        id={`unit-${idx}-baths`}
+                        value={unit.baths}
+                        onChange={(v) =>
+                          update("property", (p) => ({
+                            ...p,
+                            units: p.units.map((u, i) => (i === idx ? { ...u, baths: v } : u)),
+                          }))
+                        }
+                      />
+                    </FieldShell>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <FieldShell label="Purchase price" htmlFor="purchasePrice" required>
               <CurrencyField

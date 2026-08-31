@@ -6,7 +6,30 @@ import {
   DEFAULT_HOMESTEAD_EXEMPTION_FIELDS,
   DEFAULT_INSURANCE_MONTHLY_ESTIMATE,
 } from "./constants";
-import type { UnderwritingFormData } from "./types";
+import type { PropertyType, UnderwritingFormData, UnitBedBath } from "./types";
+
+/** How many per-unit bed/bath rows a multi-unit property type gets — single_family and condo get none, since there's only one unit. */
+export function unitCountForPropertyType(type: PropertyType): number {
+  switch (type) {
+    case "duplex":
+      return 2;
+    case "triplex":
+      return 3;
+    case "fourplex":
+      return 4;
+    default:
+      return 0;
+  }
+}
+
+/** Resizes a units array to match a property type's unit count, preserving existing rows where possible instead of wiping user input on every keystroke-adjacent re-render. */
+export function resizeUnitsForPropertyType(units: UnitBedBath[], type: PropertyType): UnitBedBath[] {
+  const count = unitCountForPropertyType(type);
+  if (count === 0) return [];
+  const next = units.slice(0, count);
+  while (next.length < count) next.push({ beds: "", baths: "" });
+  return next;
+}
 
 export function createDefaultFormData(initialTier?: UnderwritingFormData["tier"]): UnderwritingFormData {
   return {
@@ -28,6 +51,7 @@ export function createDefaultFormData(initialTier?: UnderwritingFormData["tier"]
       propertyType: "single_family",
       beds: "",
       baths: "",
+      units: [],
       sqft: "",
       yearBuilt: "",
       purchasePrice: "",

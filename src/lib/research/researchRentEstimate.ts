@@ -40,8 +40,16 @@ to this task — use it. A single search attempt that comes up empty is not a re
 confidence; try multiple listing platforms and search strategies before concluding comps don't
 exist.
 
+If "units" is present in the known facts, this is a multi-unit property (duplex/triplex/fourplex)
+being rented out unit-by-unit, not as one whole-building lease. In that case: find comps for EACH
+unit's bed/bath size separately (a studio/1BR unit rents very differently than a 3BR unit in the
+same building), then report "base"/"low"/"high" as the SUM of all units' rents combined — that
+total is what feeds the property's cash-flow math. Say in "confidence_note" what each unit rented
+for individually so the buyer can see the breakdown, and include comps for each unit size in
+"comps". If "units" is absent, treat this as a single rentable unit as usual.
+
 Find 3-5 CURRENTLY ACTIVE rental listings within up to 10 miles of the subject property, matching
-bed/bath/sqft as closely as possible:
+bed/bath/sqft as closely as possible (per unit, if this is a multi-unit property):
 - Search across multiple sources: Zillow rentals, Apartments.com, Realtor.com rentals, Rent.com,
   and any local property-management company or MLS rental feed you can reach. Do not stop after
   one platform returns nothing.
@@ -89,7 +97,7 @@ export async function researchRentEstimate(
   city: string,
   state: string,
   zip: string,
-  knownFacts: { sqft?: number; beds?: number; baths?: number },
+  knownFacts: { sqft?: number; beds?: number; baths?: number; units?: { beds?: number; baths?: number }[] },
 ): Promise<RentResearchOutcome> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {

@@ -10,6 +10,11 @@ export type PriorVaLoan = {
 export type PropertyType = "single_family" | "duplex" | "triplex" | "fourplex" | "condo";
 export type OwnershipStatus = "evaluating_purchase" | "already_owned";
 
+export type UnitBedBath = {
+  beds: number | "";
+  baths: number | "";
+};
+
 export type RentConfidence = "low" | "moderate" | "high";
 
 export type StateModelId = "assessment_ratio" | "homestead_exemption" | "flat_rate" | "fallback";
@@ -56,6 +61,8 @@ export type UnderwritingFormData = {
     propertyType: PropertyType;
     beds: number | "";
     baths: number | "";
+    /** Per-unit bed/bath breakdown for duplex/triplex/fourplex — optional, one entry per unit. Purely descriptive: it feeds the PDF's property line and gives research a per-unit-type target for rent comps, but the cash-flow engine still uses one blended monthly rent, unaffected by this. */
+    units: UnitBedBath[];
     sqft: number | "";
     yearBuilt: number | "";
     purchasePrice: number | "";
