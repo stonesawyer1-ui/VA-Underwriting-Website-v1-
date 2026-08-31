@@ -1,0 +1,4 @@
+{
+  "_readme": "Verified county/municipal property tax rates, keyed by \"STATE|ZIP\". When a lookup hits here, researchProperty.ts skips the Anthropic research call entirely for the tax portion (zero cost, instant). Each entry mirrors the taxModel/taxFields/taxInsights shape the AI research call would have produced. Only add entries here after the rate has actually been verified against the county Assessor/Auditor's own published schedule -- this file is trusted at face value with no further verification step, so bad data here goes straight into every affected customer's report. verifiedAt is an ISO date; entries older than the freshness window in taxRateDatabase.ts fall back to live research automatically.",
+  "entries": {}
+}

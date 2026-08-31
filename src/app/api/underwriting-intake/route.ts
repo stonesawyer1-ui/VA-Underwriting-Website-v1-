@@ -77,33 +77,49 @@ export async function POST(request: NextRequest) {
   if (!isNonEmptyString(rawToken)) {
     return NextResponse.json({ error: "Missing payment confirmation. Choose a plan from /pricing first." }, { status: 402 });
   }
-  const entitlement = verifyEntitlement(rawToken);
-  if (!entitlement) {
+  const verifiedEntitlement = verifyEntitlement(rawToken);
+  if (!verifiedEntitlement) {
     return NextResponse.json({ error: "We couldn't verify your payment for this submission." }, { status: 402 });
   }
+  // A `const`, non-null alias so the chargeAllowance() closure below doesn't
+  // need to re-check for null — TS's flow narrowing on `entitlement` doesn't
+  // carry into a nested function declaration, but this binding is provably
+  // never reassigned, so its non-null type is sound everywhere it's used.
+  const entitlement = verifiedEntitlement;
   if (entitlement.used >= entitlement.allowance) {
     return NextResponse.json(
       { error: `You've already used all ${entitlement.allowance} property reviews on this plan.` },
       { status: 402 },
     );
   }
-  const newUsedCount = entitlement.used + 1;
-  const nextToken = signEntitlement({ ...entitlement, used: newUsedCount });
-
-  // Persist the incremented count on the Stripe Checkout Session itself so a
-  // customer can't bypass their plan's allowance by simply revisiting
-  // /get-started?session_id=... — that page reads this value fresh on every
-  // load instead of trusting a client-supplied token. This is a real-money
-  // guard: without it, a single paid session could generate unlimited
-  // reports (each one a real research + email cost) for free.
+  // Defaults to the UNCHARGED token — a submission only ever consumes an
+  // allowance slot when chargeAllowance() below actually runs. This means an
+  // infrastructure failure (Anthropic out of credits, a crash, anything on
+  // our end) never costs the customer one of their paid reviews; only a
+  // genuinely delivered report or a legitimate data-quality hold does. See
+  // the 2026-08-31 incident (epskinner20@gmail.com) where this had to be
+  // fixed by hand in Stripe after the fact — this makes that self-correcting.
+  let nextToken = signEntitlement(entitlement);
   const stripe = getStripeClient();
-  if (stripe && entitlement.stripeSessionId !== "demo") {
-    try {
-      await stripe.checkout.sessions.update(entitlement.stripeSessionId, {
-        metadata: { used: String(newUsedCount) },
-      });
-    } catch (err) {
-      console.error("[underwriting-intake] Failed to persist usage count to Stripe session", err);
+
+  async function chargeAllowance(): Promise<void> {
+    const newUsedCount = entitlement.used + 1;
+    nextToken = signEntitlement({ ...entitlement, used: newUsedCount });
+
+    // Persist the incremented count on the Stripe Checkout Session itself so
+    // a customer can't bypass their plan's allowance by simply revisiting
+    // /get-started?session_id=... — that page reads this value fresh on
+    // every load instead of trusting a client-supplied token. This is a
+    // real-money guard: without it, a single paid session could generate
+    // unlimited reports (each one a real research + email cost) for free.
+    if (stripe && entitlement.stripeSessionId !== "demo") {
+      try {
+        await stripe.checkout.sessions.update(entitlement.stripeSessionId, {
+          metadata: { used: String(newUsedCount) },
+        });
+      } catch (err) {
+        console.error("[underwriting-intake] Failed to persist usage count to Stripe session", err);
+      }
     }
   }
 
@@ -155,7 +171,21 @@ export async function POST(request: NextRequest) {
 
     const gate = evaluateConfidenceGate(research, rentResearch, formData.rentEstimate.confidence, insurance.source, rent.source);
 
+    // An outright research failure (API down, out of credits, network error)
+    // is on us, not a genuine gap in the data — never charge the customer's
+    // allowance for it. A low-confidence-but-successful result (e.g. no rent
+    // comps found) is a real data-quality hold and does consume a slot, same
+    // as a fully delivered report, since a human will still complete it.
+    const isInfrastructureFault =
+      research.status === "error" ||
+      research.status === "not_configured" ||
+      rentResearch.status === "error" ||
+      rentResearch.status === "not_configured";
+
     if (!gate.passed) {
+      if (!isInfrastructureFault) {
+        await chargeAllowance();
+      }
       await sendHoldForReviewNotice({
         referenceId,
         reasons: gate.reasons,
@@ -170,12 +200,15 @@ export async function POST(request: NextRequest) {
           referenceId,
           customerEmail: formData.customer.email,
           customerName: formData.customer.name,
+          isInfrastructureFault,
         });
       } catch (err) {
         console.error("[underwriting-intake] Failed to send customer review-delay notice", err);
       }
       return NextResponse.json({ success: true, referenceId, nextToken }, { status: 200 });
     }
+
+    await chargeAllowance();
 
     const engineInputs = buildEngineInputs(formData, research, rentResearch, resolvedTax);
     const outputs = await computeUnderwriting(engineInputs);

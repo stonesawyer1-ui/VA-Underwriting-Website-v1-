@@ -143,19 +143,28 @@ export async function sendCustomerReviewDelayNotice(params: {
   referenceId: string;
   customerEmail: string;
   customerName: string;
+  /** True when the delay is a research-service failure on our end (API outage, etc.) rather than a genuine data-quality gap — the wording and the allowance-charging decision both hinge on this. */
+  isInfrastructureFault: boolean;
 }) {
   const client = getClient();
   if (!client) return;
+
+  const bodyText = params.isInfrastructureFault
+    ? `Most reports are ready within an hour, but yours hit a temporary issue on our end (our research
+      service was briefly unavailable) before it could finish. This was not caused by anything in your
+      submission, and it does <strong>not</strong> count against your plan — we're re-running it now
+      and you'll have your VA Home Underwriting Report within one business day.`
+    : `Most reports are ready within an hour, but a few of the numbers on your property need a
+      manual check before we're comfortable sending the report — usually a local tax rate or
+      rent comp we want to confirm by hand rather than estimate. We're on it, and you'll have
+      your VA Home Underwriting Report within one business day.`;
 
   const html = `
     <div style="font-family:sans-serif;max-width:560px;margin:0 auto;">
       <h2 style="color:#0a1f44;">Your report needs a closer look — ${params.referenceId}</h2>
       <p style="color:#222;line-height:1.6;">
         ${params.customerName ? `Hi ${params.customerName},` : "Hi,"}<br/><br/>
-        Most reports are ready within an hour, but a few of the numbers on your property need a
-        manual check before we're comfortable sending the report — usually a local tax rate or
-        rent comp we want to confirm by hand rather than estimate. We're on it, and you'll have
-        your VA Home Underwriting Report within one business day.
+        ${bodyText}
       </p>
       <p style="color:#888;font-size:12px;">Reference: ${params.referenceId}</p>
     </div>

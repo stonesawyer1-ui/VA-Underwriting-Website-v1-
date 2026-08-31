@@ -115,7 +115,7 @@ export async function researchRentEstimate(
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const response = await client.messages.create({
-        model: "claude-opus-5",
+        model: "claude-sonnet-5",
         max_tokens: 4096,
         system: SYSTEM_PROMPT,
         tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 10 }],

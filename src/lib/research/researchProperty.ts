@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { extractJson } from "./jsonExtract";
+import { lookupTaxRate, taxRateEntryToResearchOutcome } from "./taxRateDatabase";
 
 export type FieldConfidence = "Confirmed" | "Estimated";
 
@@ -135,6 +136,19 @@ export async function researchProperty(
   zip: string,
   knownFacts: { sqft?: number; beds?: number; baths?: number; yearBuilt?: number },
 ): Promise<ResearchOutcome> {
+  // Checked before anything else, including the API-key check below — a
+  // verified rate answers the tax question with zero Anthropic cost and no
+  // network round-trip at all, regardless of whether research is configured.
+  const dbEntry = lookupTaxRate(state, zip);
+  if (dbEntry) {
+    console.log("[research] Tax-rate database hit — skipping Anthropic research entirely", {
+      state,
+      zip,
+      county: dbEntry.county,
+    });
+    return taxRateEntryToResearchOutcome(dbEntry);
+  }
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return { status: "not_configured" };
@@ -181,7 +195,7 @@ async function runResearchAttempt(
   cacheKey: string,
 ): Promise<ResearchOutcome> {
   const response = await client.messages.create({
-    model: "claude-opus-5",
+    model: "claude-sonnet-5",
     max_tokens: 8192,
     system: SYSTEM_PROMPT,
     tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 6 }],
