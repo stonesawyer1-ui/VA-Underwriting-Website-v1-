@@ -19,13 +19,12 @@ import { runJobAttempt } from "@/lib/pipeline/processSubmission";
 // and keeps retrying — no submission is silently lost, and none is ever
 // double-charged, regardless of how long research takes.
 //
-// 800s is the generally-available ceiling on Pro + Fluid Compute (up from
-// Hobby's hard 300s). Vercel does offer an "extended max duration" beta up
-// to 1800s, but that's a separate opt-in the account isn't enrolled in — 800s
-// is the real budget available today. Most submissions still finish in well
-// under a minute of this; the rare slow one now gets a lot more room before
-// it even needs a background retry at all.
-export const maxDuration = 800;
+// TEST 2026-09-01: trying Vercel's "extended max duration" beta (up to
+// 1800s/30min on Pro, per-function config, no separate purchase per
+// Vercel's docs) to see if this account is actually enrolled — untested
+// until now. If the deploy/build rejects this, revert to 800s (the
+// confirmed-working generally-available ceiling).
+export const maxDuration = 1800;
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;

@@ -4,14 +4,14 @@ import { runJobAttempt } from "@/lib/pipeline/processSubmission";
 
 // Matches the intake route's maxDuration (see its comment) so a background
 // retry gets the same full time budget as the initial attempt.
-export const maxDuration = 800;
+export const maxDuration = 1800;
 
-// Comfortably longer than this route's own maxDuration (800s ≈ 13.3min), so a
+// Comfortably longer than this route's own maxDuration (1800s = 30min), so a
 // previous attempt that's still genuinely in flight is never picked up again
 // by an overlapping sweep run — this app has no distributed locking, so this
 // timestamp guard is the whole concurrency story, and it only needs to work
 // for single-digit-per-day submission volume.
-const STALE_THRESHOLD_MS = 18 * 60 * 1000;
+const STALE_THRESHOLD_MS = 35 * 60 * 1000;
 
 /**
  * Called every 5 minutes by Vercel Cron (see vercel.json). Vercel Cron

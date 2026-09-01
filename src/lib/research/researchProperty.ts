@@ -180,18 +180,16 @@ export async function researchProperty(
   // eventually killed by Vercel's 300s ceiling instead, the worst outcome.
   // withHardDeadline() below enforces a real one via AbortController; the
   // client's own timeout stays as a secondary guard.
-  // Raised to 650s on 2026-08-31: the intake route runs under Vercel Pro's
-  // 800s ceiling (the real, generally-available budget — not the 1800s
-  // extended-duration beta, which this account isn't enrolled in), leaving
-  // ~150s of headroom after this for compute/PDF/email — a slow-but-real
-  // search round is worth waiting out rather than cutting off just to fail
-  // fast into a retry queue.
-  const client = new Anthropic({ apiKey, timeout: 650_000 });
+  // TEST 2026-09-01: raised to 1500s while trying Vercel's 1800s
+  // extended-max-duration beta on the intake route, leaving ~300s of
+  // headroom for compute/PDF/email. Revert to 650s alongside the route's
+  // maxDuration if the beta isn't actually accepted on this account.
+  const client = new Anthropic({ apiKey, timeout: 1_500_000 });
 
   let lastErr: unknown;
   for (let attempt = 0; attempt < 1; attempt++) {
     try {
-      return await withHardDeadline(650_000, (signal) =>
+      return await withHardDeadline(1_500_000, (signal) =>
         runResearchAttempt(client, address, city, state, zip, knownFacts, cacheKey, signal),
       );
     } catch (err) {
