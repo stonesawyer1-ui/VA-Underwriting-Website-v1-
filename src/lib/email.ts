@@ -150,11 +150,11 @@ export async function sendCustomerReviewDelayNotice(params: {
   if (!client) return;
 
   const bodyText = params.isInfrastructureFault
-    ? `Most reports are ready within an hour, but yours hit a temporary issue on our end (our research
+    ? `Most reports are ready within 30 minutes, but yours hit a temporary issue on our end (our research
       service was briefly unavailable) before it could finish. This was not caused by anything in your
       submission, and it does <strong>not</strong> count against your plan — we're re-running it now
       and you'll have your VA Home Underwriting Report within one business day.`
-    : `Most reports are ready within an hour, but a few of the numbers on your property need a
+    : `Most reports are ready within 30 minutes, but a few of the numbers on your property need a
       manual check before we're comfortable sending the report — usually a local tax rate or
       rent comp we want to confirm by hand rather than estimate. We're on it, and you'll have
       your VA Home Underwriting Report within one business day.`;
@@ -199,7 +199,7 @@ export async function sendStillProcessingNotice(params: {
       <h2 style="color:#0a1f44;">Still working on your report — ${params.referenceId}</h2>
       <p style="color:#222;line-height:1.6;">
         ${params.customerName ? `Hi ${params.customerName},` : "Hi,"}<br/><br/>
-        Most reports are ready within an hour, but yours is taking a bit longer than usual —
+        Most reports are ready within 30 minutes, but yours is taking a bit longer than usual —
         nothing is wrong, and there's nothing you need to do. We're continuing to work on it
         and you'll have your VA Home Underwriting Report within one business day.
       </p>

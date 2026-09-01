@@ -47,7 +47,7 @@ export default function TermsPage() {
                   our intake form; we research the applicable tax rules,
                   comparable rents, and local market data, and deliver a VA
                   Home Underwriting Report as a PDF, along with a supporting
-                  Excel workbook, by email — typically within one hour of a
+                  Excel workbook, by email — typically within 30 minutes of a
                   complete submission. A small number of submissions need a
                   manual check on a specific number before we&apos;re
                   comfortable sending the report; when that happens, we email
