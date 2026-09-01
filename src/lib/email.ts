@@ -4,11 +4,23 @@ import type { UnderwritingFormData } from "@/lib/underwriting/types";
 import type { ResultsSummary } from "@/lib/underwriting/calculations";
 import { formatCurrency, formatPercent } from "@/lib/underwriting/format";
 
-// Defaults to Resend's shared sandbox domain, which works but hurts
-// deliverability/trust. Once review@garrisonriskreview.com is verified in
-// Resend (DNS records added), set EMAIL_FROM_ADDRESS and this switches with
-// no code change needed.
-const FROM_ADDRESS = process.env.EMAIL_FROM_ADDRESS || "Garrison Risk Review <onboarding@resend.dev>";
+/**
+ * Extracts just the raw email address out of EMAIL_FROM_ADDRESS, whichever
+ * shape it's set in ("Name <email>" or a bare email), and always wraps it
+ * with our own display name. This exists specifically because Resend's
+ * domain-verification UI suggests the account holder's own name as the
+ * sender display name by default — EMAIL_FROM_ADDRESS had been set that
+ * way, so every customer email showed a personal name instead of the
+ * business name (caught 2026-09-01). Forcing the display name here means
+ * it's correct no matter what the env var literally contains.
+ */
+function resolveFromAddress(): string {
+  const raw = process.env.EMAIL_FROM_ADDRESS || "onboarding@resend.dev";
+  const angleMatch = raw.match(/<([^>]+)>/);
+  const emailOnly = (angleMatch ? angleMatch[1] : raw).trim();
+  return `Garrison Risk Review <${emailOnly}>`;
+}
+const FROM_ADDRESS = resolveFromAddress();
 
 function getClient(): Resend | null {
   const apiKey = process.env.RESEND_API_KEY;
