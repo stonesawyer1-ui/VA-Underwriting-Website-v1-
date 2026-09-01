@@ -195,16 +195,24 @@ export async function researchProperty(
   // eventually killed by Vercel's 300s ceiling instead, the worst outcome.
   // withHardDeadline() below enforces a real one via AbortController; the
   // client's own timeout stays as a secondary guard.
-  // TEST 2026-09-01: raised to 1500s while trying Vercel's 1800s
-  // extended-max-duration beta on the intake route, leaving ~300s of
-  // headroom for compute/PDF/email. Revert to 650s alongside the route's
-  // maxDuration if the beta isn't actually accepted on this account.
-  const client = new Anthropic({ apiKey, timeout: 1_500_000 });
+  //
+  // 2026-09-01 regression (stonesawyer1@gmail.com, GRR-MTJ0ZS2V): this had
+  // been raised to 1500s (25min) during a same-night test of Vercel's
+  // extended-max-duration beta and never brought back down. A single stuck
+  // research call then had room to occupy nearly the entire background job's
+  // retry budget by itself — the customer waited ~17 minutes for what should
+  // have been one failed attempt plus one quick successful retry, because
+  // the retry sweep (correctly) won't touch a job until its current attempt
+  // actually finishes. Set to 180s: generous enough for the genuinely slow
+  // multi-round searches that justified 110s, short enough that a stuck call
+  // fails fast and frees the job for the next 2-minute sweep tick (see
+  // vercel.json) well within the 25-minute total delivery target.
+  const client = new Anthropic({ apiKey, timeout: 180_000 });
 
   let lastErr: unknown;
   for (let attempt = 0; attempt < 1; attempt++) {
     try {
-      return await withHardDeadline(1_500_000, (signal) =>
+      return await withHardDeadline(180_000, (signal) =>
         runResearchAttempt(client, address, city, state, zip, knownFacts, cacheKey, signal),
       );
     } catch (err) {

@@ -19,12 +19,15 @@ import { runJobAttempt } from "@/lib/pipeline/processSubmission";
 // and keeps retrying — no submission is silently lost, and none is ever
 // double-charged, regardless of how long research takes.
 //
-// TEST 2026-09-01: trying Vercel's "extended max duration" beta (up to
-// 1800s/30min on Pro, per-function config, no separate purchase per
-// Vercel's docs) to see if this account is actually enrolled — untested
-// until now. If the deploy/build rejects this, revert to 800s (the
-// confirmed-working generally-available ceiling).
-export const maxDuration = 1800;
+// Vercel's "extended max duration" beta (confirmed genuinely active on this
+// account 2026-09-01 via a live test) allows up to 1800s/30min here, but
+// each research call's own hard deadline is now only 180s (see
+// researchProperty.ts) and the three run in parallel — 600s leaves ample
+// room for research + compute + PDF/XLSX generation + email on even a slow
+// attempt, without holding the door open for a single hung call to eat
+// most of a 25-minute customer-facing delivery target the way 1800s did on
+// 2026-09-01 (stonesawyer1@gmail.com, GRR-MTJ0ZS2V).
+export const maxDuration = 600;
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;

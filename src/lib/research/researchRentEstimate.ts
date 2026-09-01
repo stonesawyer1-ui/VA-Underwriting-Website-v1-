@@ -142,13 +142,17 @@ export async function researchRentEstimate(
   // without ever throwing, and Vercel's 300s ceiling killed the whole
   // request instead. withHardDeadline() enforces a real one via
   // AbortController; the client's own timeout stays as a secondary guard.
-  // TEST 2026-09-01: raised to 1500s — see researchProperty.ts for why.
-  const client = new Anthropic({ apiKey, timeout: 1_500_000 });
+  //
+  // Set to 180s, not the 1500s (25min) briefly used while testing Vercel's
+  // extended-max-duration beta — see researchProperty.ts for the
+  // 2026-09-01 regression that caused (a single stuck call blocking the
+  // background job's retry sweep for most of the customer's wait).
+  const client = new Anthropic({ apiKey, timeout: 180_000 });
 
   let lastErr: unknown;
   for (let attempt = 0; attempt < 1; attempt++) {
     try {
-      const response = await withHardDeadline(1_500_000, (signal) =>
+      const response = await withHardDeadline(180_000, (signal) =>
         client.messages.create(
           {
             model: "claude-sonnet-5",

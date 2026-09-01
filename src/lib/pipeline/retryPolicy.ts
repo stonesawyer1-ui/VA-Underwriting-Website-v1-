@@ -6,10 +6,12 @@ import type { ProcessingJob } from "@/lib/jobStore";
  * retries fire on the very next sweep tick regardless of this value. This
  * threshold only matters for the pathological case where a hard kill
  * mid-attempt prevents that flag from ever being cleared — comfortably
- * longer than the pipeline's own maxDuration (1800s = 30min) so a genuinely
- * still-running attempt is never picked up twice at once.
+ * longer than the pipeline's own maxDuration (600s = 10min, tightened
+ * 2026-09-01 alongside the research timeouts) so a genuinely still-running
+ * attempt is never picked up twice at once, while still resolving a real
+ * crash well inside a 25-minute delivery target instead of the old 35min.
  */
-export const STALE_THRESHOLD_MS = 35 * 60 * 1000;
+export const STALE_THRESHOLD_MS = 12 * 60 * 1000;
 
 /**
  * Decides whether a pending job is safe for the retry sweep to pick up

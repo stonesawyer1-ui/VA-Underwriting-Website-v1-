@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/process-pending",
-      "schedule": "*/5 * * * *"
+      "schedule": "*/2 * * * *"
     }
   ]
 }

@@ -263,7 +263,14 @@ export async function processSubmission(job: ProcessingJob): Promise<ProcessSubm
   return "completed";
 }
 
-/** ~25 real minutes including the initial attempt, at one attempt per ~5-minute sweep — long enough that a genuinely transient research outage almost always clears, short enough that a customer isn't left waiting all day before a human takes over. */
+/**
+ * At most ~23 real minutes worst-case (5 attempts, each up to a 3-minute
+ * research deadline, spaced by up to a 2-minute sweep tick to notice each
+ * failure — see vercel.json and researchProperty.ts) — comfortably inside
+ * the 25-minute delivery target even if every attempt fails outright,
+ * while still giving a genuinely transient research outage several real
+ * chances to clear before a human takes over.
+ */
 const MAX_ATTEMPTS = 5;
 
 /**
