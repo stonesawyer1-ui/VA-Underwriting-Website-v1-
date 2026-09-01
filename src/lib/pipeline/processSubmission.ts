@@ -289,6 +289,11 @@ export async function runJobAttempt(job: ProcessingJob): Promise<void> {
     result = "needs_retry";
   }
 
+  // This attempt has now genuinely finished, one way or another — clear the
+  // flag before anything else so the sweep can safely retry a still-eligible
+  // job on its very next tick instead of waiting out the time-based fallback.
+  job.attemptInProgress = false;
+
   if (result === "completed" || result === "held_for_review") {
     job.status = result;
     await saveJob(job);

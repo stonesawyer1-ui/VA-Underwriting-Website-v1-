@@ -110,6 +110,7 @@ export async function POST(request: NextRequest) {
     attempts: 1,
     createdAt: now,
     lastAttemptAt: now,
+    attemptInProgress: true,
     notifiedProcessingDelay: false,
   };
 

@@ -13,6 +13,20 @@ export type ProcessingJob = {
   attempts: number;
   createdAt: string;
   lastAttemptAt: string;
+  /**
+   * True from the moment an attempt starts until runJobAttempt records its
+   * outcome (any outcome — completed, held, or retry-eligible). This is
+   * what the sweep actually trusts to decide "is this job still running
+   * right now" — set true right before an attempt starts, false right
+   * after it ends. The time-based STALE_THRESHOLD_MS in process-pending is
+   * only a fallback for the pathological case where a hard kill mid-attempt
+   * never got to flip this back to false at all.
+   *
+   * Missing on any job record written before 2026-09-01 — reads as falsy,
+   * which is the correct behavior for an old record (its one and only
+   * attempt already finished, one way or another, by definition).
+   */
+  attemptInProgress: boolean;
   /** Whether the one-time "this is taking longer than usual" email has already gone out — sent once, not on every retry. */
   notifiedProcessingDelay: boolean;
 };
