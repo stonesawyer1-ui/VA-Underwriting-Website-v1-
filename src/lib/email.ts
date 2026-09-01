@@ -26,7 +26,7 @@ import { formatCurrency, formatPercent } from "@/lib/underwriting/format";
  * environment-variable change is always picked up immediately, including
  * within the same warm serverless instance.
  */
-function resolveFromAddress(): string {
+export function resolveFromAddress(): string {
   const raw = process.env.EMAIL_FROM_ADDRESS || "review@garrisonriskreview.com";
   const angleMatch = raw.match(/<([^>]+)>/);
   const emailOnly = (angleMatch ? angleMatch[1] : raw).trim();

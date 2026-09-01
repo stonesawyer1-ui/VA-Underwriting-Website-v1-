@@ -1,19 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getJob, listPendingJobIds, saveJob, removePendingJob, isJobStoreConfigured, type ProcessingJob } from "@/lib/jobStore";
 import { runJobAttempt } from "@/lib/pipeline/processSubmission";
+import { shouldRetryJob } from "@/lib/pipeline/retryPolicy";
 
 // Matches the intake route's maxDuration (see its comment) so a background
 // retry gets the same full time budget as the initial attempt.
 export const maxDuration = 1800;
-
-// Safety-only fallback, not the normal gate: a clean attempt clears
-// job.attemptInProgress the moment it finishes (see jobStore.ts), so most
-// retries fire on the very next sweep tick regardless of this value. This
-// threshold only matters for the pathological case where a hard kill
-// mid-attempt prevents that flag from ever being cleared — comfortably
-// longer than this route's own maxDuration (1800s = 30min) so a genuinely
-// still-running attempt is never picked up twice at once.
-const STALE_THRESHOLD_MS = 35 * 60 * 1000;
 
 /**
  * Called every 5 minutes by Vercel Cron (see vercel.json). Vercel Cron
@@ -62,8 +54,7 @@ async function handleSweep(request: NextRequest) {
         return;
       }
 
-      const ageMs = now - new Date(job.lastAttemptAt).getTime();
-      if (job.attemptInProgress && ageMs < STALE_THRESHOLD_MS) {
+      if (!shouldRetryJob(job, now)) {
         // The last recorded attempt hasn't reported finishing yet, and it's
         // not old enough to assume it was silently killed — leave it for a
         // later sweep rather than risk running it twice at once.
