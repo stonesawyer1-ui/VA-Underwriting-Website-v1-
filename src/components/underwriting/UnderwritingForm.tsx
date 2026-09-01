@@ -130,7 +130,7 @@ export function UnderwritingForm({
         </p>
         <p className="mt-3 rounded-sm bg-navy-50 px-4 py-3 text-sm leading-relaxed text-navy-900/70">
           You&apos;ll receive your VA Home Underwriting Report by email within{" "}
-          <span className="font-semibold text-navy-900">1 hour</span>. If you don&apos;t see it in
+          <span className="font-semibold text-navy-900">30 minutes</span> for a full review. If you don&apos;t see it in
           your inbox, please check your{" "}
           <span className="font-semibold text-navy-900">spam or junk folder</span> before reaching
           out to us.
