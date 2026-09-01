@@ -5,6 +5,7 @@ import type { TaxModelId } from "@/lib/workbook/cellMap";
 import type { UnderwritingInputs } from "@/lib/workbook/computeUnderwriting";
 import { getStateModelId } from "@/lib/underwriting/constants";
 import { regionalRentEstimate, regionalInsuranceEstimate } from "@/lib/research/regionalAverages";
+import { propertyTypeLabel } from "@/lib/underwriting/defaults";
 
 /** Client form field names -> engine cell-map field names (only homestead_exemption differs). */
 function clientTaxInputsForModel(data: UnderwritingFormData, model: TaxModelId): Record<string, number> {
@@ -193,14 +194,14 @@ export function buildEngineInputs(
       address: data.property.address,
       cityStateZip: `${data.property.city}, ${data.property.state} ${data.property.zip}`,
       county: data.property.county,
-      propertyType: data.property.propertyType.replace(/_/g, " "),
+      propertyType: propertyTypeLabel(data.property.propertyType),
       bedsBaths: `${data.property.beds || "?"} / ${data.property.baths || "?"}`,
       sqft: typeof data.property.sqft === "number" ? data.property.sqft : 0,
       yearBuilt: typeof data.property.yearBuilt === "number" ? data.property.yearBuilt : 0,
       price: typeof data.property.purchasePrice === "number" ? data.property.purchasePrice : 0,
       expectedMonthlyRent,
       yearlyInsurance,
-      monthlyHoa: data.financing.hoaMonthly,
+      monthlyHoa: typeof data.financing.hoaMonthly === "number" ? data.financing.hoaMonthly : 0,
       repairsNeeded: 0,
       arvValueAdded: 0,
     },

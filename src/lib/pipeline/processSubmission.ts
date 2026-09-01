@@ -13,6 +13,7 @@ import { computeUnderwriting } from "@/lib/workbook/computeUnderwriting";
 import { fillWorkbookXlsx } from "@/lib/workbook/fillWorkbookXlsx";
 import { evaluateConfidenceGate } from "@/lib/confidenceGate";
 import { getTaxDisclaimer } from "@/lib/underwriting/taxDisclaimers";
+import { propertyTypeLabel } from "@/lib/underwriting/defaults";
 import { UnderwritingReportDocument, type UnderwritingReportData } from "@/lib/pdf/UnderwritingReportDocument";
 import { UnderwritingDetailDocument } from "@/lib/pdf/UnderwritingDetailDocument";
 import { getStripeClient } from "@/lib/stripe";
@@ -168,7 +169,7 @@ export async function processSubmission(job: ProcessingJob): Promise<ProcessSubm
   const reportData: UnderwritingReportData = {
     propertyAddressLine: `${formData.property.address}, ${formData.property.city}, ${formData.property.state} ${formData.property.zip}`,
     county: formData.property.county,
-    propertyTypeLine: `${formData.property.propertyType.replace(/_/g, " ")}, ${formData.property.beds || "?"} bed / ${formData.property.baths || "?"} bath${unitBreakdownSuffix(formData.property.units)}, ${formData.property.sqft || "?"} sf, built ${formData.property.yearBuilt || "?"}`,
+    propertyTypeLine: `${propertyTypeLabel(formData.property.propertyType)}, ${formData.property.beds || "?"} bed / ${formData.property.baths || "?"} bath${unitBreakdownSuffix(formData.property.units)}, ${formData.property.sqft || "?"} sf, built ${formData.property.yearBuilt || "?"}`,
     isCondo,
     preparedFor: formData.customer.name || "Buyer",
     dateOfMemo: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),

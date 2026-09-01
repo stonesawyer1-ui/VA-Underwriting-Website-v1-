@@ -450,6 +450,7 @@ export function UnderwritingForm({
                 }}
                 options={[
                   { value: "single_family", label: "Single Family" },
+                  { value: "single_family_adu", label: "Single Family + ADU" },
                   { value: "duplex", label: "Duplex" },
                   { value: "triplex", label: "Triplex" },
                   { value: "fourplex", label: "Fourplex" },
@@ -560,7 +561,7 @@ export function UnderwritingForm({
               <CurrencyField
                 id="hoaMonthly"
                 value={data.financing.hoaMonthly}
-                onChange={(v) => update("financing", (f) => ({ ...f, hoaMonthly: v === "" ? 0 : v }))}
+                onChange={(v) => update("financing", (f) => ({ ...f, hoaMonthly: v }))}
               />
             </FieldShell>
           </div>

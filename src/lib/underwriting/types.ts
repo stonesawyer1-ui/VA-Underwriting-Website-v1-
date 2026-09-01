@@ -7,7 +7,7 @@ export type PriorVaLoan = {
   status: LoanStatus;
 };
 
-export type PropertyType = "single_family" | "duplex" | "triplex" | "fourplex" | "condo";
+export type PropertyType = "single_family" | "single_family_adu" | "duplex" | "triplex" | "fourplex" | "condo";
 export type OwnershipStatus = "evaluating_purchase" | "already_owned";
 
 export type UnitBedBath = {
@@ -72,7 +72,14 @@ export type UnderwritingFormData = {
     interestRate: number | "";
     loanTermYears: number;
     downPayment: number;
-    hoaMonthly: number;
+    /**
+     * Allowed to sit empty while the buyer is typing, unlike most of this
+     * object's other plain-number fields — the onChange handler used to
+     * snap "" back to 0 on every keystroke, which made the field feel stuck
+     * at 0 and impossible to clear/retype naturally (caught 2026-09-01).
+     * Coerced to 0 wherever it's actually consumed downstream.
+     */
+    hoaMonthly: number | "";
     countyLoanLimit: number;
     countyLoanLimitOverridden: boolean;
   };
