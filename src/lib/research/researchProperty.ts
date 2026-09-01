@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { extractJson } from "./jsonExtract";
 import { lookupTaxRate, taxRateEntryToResearchOutcome } from "./taxRateDatabase";
 import { withHardDeadline } from "./hardDeadline";
+import { getCachedResearch, setCachedResearch } from "./researchCache";
 
 export type FieldConfidence = "Confirmed" | "Estimated";
 
@@ -104,16 +105,25 @@ schoolOperatingMillage, schoolBondMillage) are in mills. schoolHomesteadExemptio
 is a dollar amount.`;
 
 /**
- * In-memory cache keyed by normalized address, 30-day TTL. This resets on
- * server restart and is not shared across serverless instances — fine for a
- * single long-running dev/prod server, but a real deployment on serverless
- * infrastructure needs a persistent store (Redis/DB) instead.
+ * Two-tier cache, both keyed on normalized address, 30-day TTL:
+ * 1. In-memory Map — fastest, but resets every cold start and is invisible
+ *    to any other concurrently-running serverless instance.
+ * 2. Redis (researchCache.ts) — durable backstop that actually survives
+ *    cold starts and is shared across instances; this is what makes
+ *    caching meaningfully effective in production (2026-09-01 — the
+ *    in-memory-only cache was barely hitting at all in practice).
+ * Checked in that order; a fresh result is written to both.
  */
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const CACHE_TTL_SECONDS = CACHE_TTL_MS / 1000;
 const cache = new Map<string, { result: PropertyResearch; expiresAt: number }>();
 
 function normalizeCacheKey(address: string, state: string): string {
   return `${address.trim().toLowerCase()}|${state.trim().toUpperCase()}`;
+}
+
+function redisCacheKey(cacheKey: string): string {
+  return `research:property:${cacheKey}`;
 }
 
 function normalizeTaxFields(raw: Record<string, unknown> | undefined): Record<string, ResearchedField> {
@@ -159,6 +169,11 @@ export async function researchProperty(
   const cached = cache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     return { status: "ok", result: cached.result, cached: true };
+  }
+  const redisCached = await getCachedResearch<PropertyResearch>(redisCacheKey(cacheKey));
+  if (redisCached) {
+    cache.set(cacheKey, { result: redisCached, expiresAt: Date.now() + CACHE_TTL_MS });
+    return { status: "ok", result: redisCached, cached: true };
   }
 
   // Hard per-attempt timeout so a slow/stuck web-search round can't silently
@@ -273,6 +288,7 @@ async function runResearchAttempt(
   };
 
   cache.set(cacheKey, { result, expiresAt: Date.now() + CACHE_TTL_MS });
+  await setCachedResearch(redisCacheKey(cacheKey), result, CACHE_TTL_SECONDS);
 
   // Audit log: every research call's raw response, alongside the address it was for.
   console.log("[research] Property research completed", {

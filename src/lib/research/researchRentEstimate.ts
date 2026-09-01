@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { extractJson } from "./jsonExtract";
 import { withHardDeadline } from "./hardDeadline";
+import { getCachedResearch, setCachedResearch } from "./researchCache";
 
 export type RentComp = {
   address: string;
@@ -86,11 +87,18 @@ Return your findings as a single JSON object matching this schema, and nothing e
   "comps": [{"address": "string", "rent": number, "beds": number, "baths": number, "sqft": number, "source": "string"}]
 }`;
 
+// Two-tier cache (in-memory + Redis backstop) — see researchProperty.ts's
+// cache comment for why both layers exist.
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const CACHE_TTL_SECONDS = CACHE_TTL_MS / 1000;
 const cache = new Map<string, { result: RentEstimate; expiresAt: number }>();
 
 function normalizeCacheKey(address: string, state: string): string {
   return `${address.trim().toLowerCase()}|${state.trim().toUpperCase()}`;
+}
+
+function redisCacheKey(cacheKey: string): string {
+  return `research:rent:${cacheKey}`;
 }
 
 export async function researchRentEstimate(
@@ -109,6 +117,11 @@ export async function researchRentEstimate(
   const cached = cache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     return { status: "ok", result: cached.result, cached: true };
+  }
+  const redisCached = await getCachedResearch<RentEstimate>(redisCacheKey(cacheKey));
+  if (redisCached) {
+    cache.set(cacheKey, { result: redisCached, expiresAt: Date.now() + CACHE_TTL_MS });
+    return { status: "ok", result: redisCached, cached: true };
   }
 
   // Hard per-attempt timeout so a slow/stuck web-search round can't silently
@@ -177,6 +190,7 @@ export async function researchRentEstimate(
       };
 
       cache.set(cacheKey, { result, expiresAt: Date.now() + CACHE_TTL_MS });
+      await setCachedResearch(redisCacheKey(cacheKey), result, CACHE_TTL_SECONDS);
       console.log("[research-rent] Rent estimate completed", { address, state, confidence: result.confidence });
 
       return { status: "ok", result, cached: false };
