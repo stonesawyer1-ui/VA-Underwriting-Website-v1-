@@ -13,14 +13,25 @@ import { formatCurrency, formatPercent } from "@/lib/underwriting/format";
  * way, so every customer email showed a personal name instead of the
  * business name (caught 2026-09-01). Forcing the display name here means
  * it's correct no matter what the env var literally contains.
+ *
+ * Defaults to the verified review@garrisonriskreview.com domain, NOT
+ * Resend's sandbox address — discovered 2026-09-01 that EMAIL_FROM_ADDRESS
+ * was not effectively set in production, so every real customer send had
+ * silently been going through the sandbox domain, which 403s on any
+ * recipient except the account owner. Internal notifications (always sent
+ * to the account owner) looked fine and masked this for every customer
+ * send until the Resend-error-checking fix surfaced it.
+ *
+ * Computed fresh on every call (not cached at module load) so an
+ * environment-variable change is always picked up immediately, including
+ * within the same warm serverless instance.
  */
 function resolveFromAddress(): string {
-  const raw = process.env.EMAIL_FROM_ADDRESS || "onboarding@resend.dev";
+  const raw = process.env.EMAIL_FROM_ADDRESS || "review@garrisonriskreview.com";
   const angleMatch = raw.match(/<([^>]+)>/);
   const emailOnly = (angleMatch ? angleMatch[1] : raw).trim();
   return `Garrison Risk Review <${emailOnly}>`;
 }
-const FROM_ADDRESS = resolveFromAddress();
 
 function getClient(): Resend | null {
   const apiKey = process.env.RESEND_API_KEY;
@@ -85,7 +96,7 @@ export async function sendUnderwritingInquiryEmail(
   `;
 
   await sendOrThrow(client, {
-    from: FROM_ADDRESS,
+    from: resolveFromAddress(),
     to: siteConfig.notifyEmail,
     replyTo: data.customer.email || undefined,
     subject: `New inquiry: ${data.property.address || "Underwriting request"} (${referenceId})`,
@@ -126,7 +137,7 @@ export async function sendUnderwritingReportToCustomer(params: {
   }
 
   await sendOrThrow(client, {
-    from: FROM_ADDRESS,
+    from: resolveFromAddress(),
     to: params.customerEmail,
     replyTo: siteConfig.notifyEmail,
     subject: `Your VA Home Underwriting Report (${params.referenceId})`,
@@ -158,7 +169,7 @@ export async function sendHoldForReviewNotice(params: {
   `;
 
   await sendOrThrow(client, {
-    from: FROM_ADDRESS,
+    from: resolveFromAddress(),
     to: siteConfig.notifyEmail,
     subject: `Held for review: ${params.propertyAddress} (${params.referenceId})`,
     html,
@@ -204,7 +215,7 @@ export async function sendCustomerReviewDelayNotice(params: {
   `;
 
   await sendOrThrow(client, {
-    from: FROM_ADDRESS,
+    from: resolveFromAddress(),
     to: params.customerEmail,
     replyTo: siteConfig.notifyEmail,
     subject: `Your VA Home Underwriting Report is taking a bit longer (${params.referenceId})`,
@@ -241,7 +252,7 @@ export async function sendStillProcessingNotice(params: {
   `;
 
   await sendOrThrow(client, {
-    from: FROM_ADDRESS,
+    from: resolveFromAddress(),
     to: params.customerEmail,
     replyTo: siteConfig.notifyEmail,
     subject: `Your VA Home Underwriting Report is still processing (${params.referenceId})`,
@@ -265,7 +276,7 @@ export async function sendContactMessageEmail(body: { name: string; email: strin
   `;
 
   await sendOrThrow(client, {
-    from: FROM_ADDRESS,
+    from: resolveFromAddress(),
     to: siteConfig.notifyEmail,
     replyTo: body.email,
     subject: `New contact message from ${body.name}`,

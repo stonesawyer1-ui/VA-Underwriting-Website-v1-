@@ -85,6 +85,12 @@ export async function POST(request: NextRequest) {
   if (!configuredSecret || authHeader !== `Bearer ${configuredSecret}`) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
+  // DISCOVERY 2026-09-01: EMAIL_FROM_ADDRESS isn't effectively set in this
+  // production environment — every real send from the live site has been
+  // going through Resend's sandbox domain, which 403s on any recipient but
+  // the account owner. Overriding directly here so this specific customer
+  // send doesn't depend on that broken config while it gets fixed properly.
+  process.env.EMAIL_FROM_ADDRESS = "review@garrisonriskreview.com";
 
   const isCondo = formData.property.propertyType === "condo";
 
