@@ -23,6 +23,27 @@ function row(label: string, value: string): string {
   return `<tr><td style="padding:4px 12px 4px 0;color:#0a1f4499;white-space:nowrap;">${label}</td><td style="padding:4px 0;font-weight:600;color:#0a1f44;">${value}</td></tr>`;
 }
 
+/**
+ * The Resend SDK does NOT throw on an API-level rejection (bad recipient,
+ * sandbox-domain restriction, bounced/suppressed address, etc.) — it
+ * resolves normally with `{ data: null, error: {...} }`. Every call site in
+ * this file used to just `await client.emails.send(...)` and discard that
+ * return value, so a rejected send looked identical to a successful one —
+ * no log, no thrown error, nothing. That's exactly what happened to a real
+ * customer's report send on 2026-09-01 (epskinner20@gmail.com,
+ * GRR-MTITR367): the pipeline logged nothing wrong and marked the job
+ * "completed", but the email never actually left Resend. This wrapper is
+ * the fix — always inspect `error` and throw if it's set, so a genuinely
+ * failed send propagates as a real failure (retry-eligible for the report
+ * email, loud in logs for the internal ones) instead of vanishing silently.
+ */
+async function sendOrThrow(client: Resend, payload: Parameters<Resend["emails"]["send"]>[0]): Promise<void> {
+  const { error } = await client.emails.send(payload);
+  if (error) {
+    throw new Error(`Resend rejected the send: ${error.name} — ${error.message}`);
+  }
+}
+
 export async function sendUnderwritingInquiryEmail(
   data: UnderwritingFormData,
   results: ResultsSummary,
@@ -51,7 +72,7 @@ export async function sendUnderwritingInquiryEmail(
     </div>
   `;
 
-  await client.emails.send({
+  await sendOrThrow(client, {
     from: FROM_ADDRESS,
     to: siteConfig.notifyEmail,
     replyTo: data.customer.email || undefined,
@@ -92,7 +113,7 @@ export async function sendUnderwritingReportToCustomer(params: {
     attachments.push({ filename: `VA-Underwriting-Workbook-${params.referenceId}.xlsx`, content: params.workbookXlsx });
   }
 
-  await client.emails.send({
+  await sendOrThrow(client, {
     from: FROM_ADDRESS,
     to: params.customerEmail,
     replyTo: siteConfig.notifyEmail,
@@ -124,7 +145,7 @@ export async function sendHoldForReviewNotice(params: {
     </div>
   `;
 
-  await client.emails.send({
+  await sendOrThrow(client, {
     from: FROM_ADDRESS,
     to: siteConfig.notifyEmail,
     subject: `Held for review: ${params.propertyAddress} (${params.referenceId})`,
@@ -170,7 +191,7 @@ export async function sendCustomerReviewDelayNotice(params: {
     </div>
   `;
 
-  await client.emails.send({
+  await sendOrThrow(client, {
     from: FROM_ADDRESS,
     to: params.customerEmail,
     replyTo: siteConfig.notifyEmail,
@@ -207,7 +228,7 @@ export async function sendStillProcessingNotice(params: {
     </div>
   `;
 
-  await client.emails.send({
+  await sendOrThrow(client, {
     from: FROM_ADDRESS,
     to: params.customerEmail,
     replyTo: siteConfig.notifyEmail,
@@ -231,7 +252,7 @@ export async function sendContactMessageEmail(body: { name: string; email: strin
     </div>
   `;
 
-  await client.emails.send({
+  await sendOrThrow(client, {
     from: FROM_ADDRESS,
     to: siteConfig.notifyEmail,
     replyTo: body.email,
