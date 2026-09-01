@@ -1,6 +1,6 @@
 import { Document, Page, Text, View } from "@react-pdf/renderer";
 import { formatCurrency, formatPercent } from "@/lib/underwriting/format";
-import { sharedStyles, Table } from "@/lib/pdf/pdfShared";
+import { sharedStyles, Table, Letterhead, SectionHeading, RunningFooter } from "@/lib/pdf/pdfShared";
 import type { UnderwritingOutputs } from "@/lib/workbook/computeUnderwriting";
 
 export type UnderwritingDetailDocumentData = {
@@ -100,13 +100,9 @@ export function UnderwritingDetailDocument(data: UnderwritingDetailDocumentData)
   return (
     <Document>
       <Page size="LETTER" style={sharedStyles.page}>
-        <Text style={sharedStyles.title}>UNDERWRITING DETAIL</Text>
-        <Text style={sharedStyles.subtitle}>
-          Reference {data.referenceId} — Generated {data.generatedAt}
-        </Text>
-        <View style={sharedStyles.hr} />
+        <Letterhead title="UNDERWRITING DETAIL" subtitle={`Reference ${data.referenceId} — Generated ${data.generatedAt}`} />
 
-        <Text style={sharedStyles.h2}>Property Snapshot</Text>
+        <SectionHeading n={1} title="Property Snapshot" />
         <Table
           rows={[
             ["Address", data.property.address],
@@ -123,7 +119,7 @@ export function UnderwritingDetailDocument(data: UnderwritingDetailDocumentData)
           ]}
         />
 
-        <Text style={sharedStyles.h2}>Financing</Text>
+        <SectionHeading n={2} title="Financing" />
         <Table
           rows={[
             ["Down payment", formatCurrency(data.financing.downPayment)],
@@ -132,7 +128,7 @@ export function UnderwritingDetailDocument(data: UnderwritingDetailDocumentData)
           ]}
         />
 
-        <Text style={sharedStyles.h2}>VA Loan Numbers</Text>
+        <SectionHeading n={3} title="VA Loan Numbers" />
         <Table
           rows={Object.entries(outputs.vaLoanNumbers).map(([key, value]) => [
             vaLoanLabels[key] ?? humanizeKey(key),
@@ -144,9 +140,10 @@ export function UnderwritingDetailDocument(data: UnderwritingDetailDocumentData)
           ])}
         />
 
-        <Text style={sharedStyles.h2}>
-          Monthly Deal Numbers ({outputs.taxModel.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())})
-        </Text>
+        <SectionHeading
+          n={4}
+          title={`Monthly Deal Numbers (${outputs.taxModel.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())})`}
+        />
         <Table
           rows={Object.entries(outputs.monthlyDealNumbers).map(([key, value]) => [
             outputLabels[key] ?? humanizeKey(key),
@@ -159,6 +156,8 @@ export function UnderwritingDetailDocument(data: UnderwritingDetailDocumentData)
           comes directly from that workbook&apos;s own formulas, not a separate estimate. It supplements, and does not
           replace, the VA Home Underwriting Report, a licensed appraisal, or advice from a CPA or attorney.
         </Text>
+
+        <RunningFooter leftText={`Garrison Risk Review — ${data.referenceId} — Underwriting Detail`} />
       </Page>
     </Document>
   );

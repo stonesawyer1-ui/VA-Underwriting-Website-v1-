@@ -1,10 +1,21 @@
 import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
 import { formatCurrency, formatPercent } from "@/lib/underwriting/format";
-import { RED, GREY, sharedStyles, Table } from "@/lib/pdf/pdfShared";
+import {
+  RED,
+  GREY,
+  GREEN,
+  sharedStyles,
+  Table,
+  Letterhead,
+  SectionHeading,
+  StatCard,
+  RunningFooter,
+  CashFlowBarChart,
+} from "@/lib/pdf/pdfShared";
 import type { CondoApproval, MarketTrendBullet } from "@/lib/research/researchMemoNarrative";
 
 const styles = { ...sharedStyles, ...StyleSheet.create({
-  flagBox: { borderWidth: 1, padding: 10, marginTop: 6, marginBottom: 6 },
+  flagBox: { borderWidth: 1, padding: 10, marginTop: 6, marginBottom: 6, borderRadius: 2 },
   flagBoxRed: { borderColor: RED, backgroundColor: "#FBE3E6" },
   flagBoxAmber: { borderColor: "#B8860B", backgroundColor: "#FBF3D9" },
   flagBoxGreen: { borderColor: "#1E7A3C", backgroundColor: "#E5F3E8" },
@@ -12,6 +23,13 @@ const styles = { ...sharedStyles, ...StyleSheet.create({
   bullet: { flexDirection: "row", marginBottom: 4 },
   bulletDot: { width: 10, fontSize: 9.5 },
   bulletText: { flex: 1, fontSize: 9.5, lineHeight: 1.4 },
+
+  verdictBanner: { borderRadius: 3, padding: 14, marginBottom: 18, alignItems: "center" },
+  verdictBannerRed: { backgroundColor: "#C8102E" },
+  verdictBannerAmber: { backgroundColor: "#B8860B" },
+  verdictBannerGreen: { backgroundColor: "#1E7A3C" },
+  verdictBannerLabel: { fontSize: 7.5, fontWeight: 700, color: "#fff", letterSpacing: 2, opacity: 0.85 },
+  verdictBannerText: { fontSize: 13, fontWeight: 700, color: "#fff", marginTop: 4, textAlign: "center" },
 }) };
 
 export type UnderwritingReportData = {
@@ -77,29 +95,38 @@ export function UnderwritingReportDocument(data: UnderwritingReportData) {
   const verdict = verdictOf(data);
   const flagStyle =
     verdict.tone === "red" ? styles.flagBoxRed : verdict.tone === "amber" ? styles.flagBoxAmber : styles.flagBoxGreen;
+  const verdictBannerStyle =
+    verdict.tone === "red" ? styles.verdictBannerRed : verdict.tone === "amber" ? styles.verdictBannerAmber : styles.verdictBannerGreen;
 
-  // Plain function (not a component) so a conditional section (condo
-  // approval) doesn't require hand-renumbering everything after it.
   let headingNum = 1;
-  const heading = (title: string) => (
-    <Text style={styles.h2}>
-      <Text style={styles.h2Num}>{headingNum++}. </Text>
-      {title}
-    </Text>
-  );
 
   const entitlementBullet = data.entitlementFirstUse
     ? `This would be ${data.preparedFor}'s first VA loan use, so full entitlement (${formatCurrency(data.entitlementAvailable)} for this loan limit) is available${data.fundingFeeWaived ? ", and the funding fee is waived by the buyer's disability rating." : " and $0 down is achievable — the deal's rental economics don't constrain future VA-loan stacking."}`
     : `${data.preparedFor} has used VA entitlement before — ${formatCurrency(data.entitlementAvailable)} remains available for this loan limit.${data.fundingFeeWaived ? " The funding fee is waived by the buyer's disability rating." : ` Funding fee rate: ${formatPercent(data.fundingFeeRatePct * 100, 2)}, rolled into the loan amount above.`}`;
 
   const condoUnapproved = data.condoApproval?.applicable && data.condoApproval.status !== "approved";
+  const totalMonthlyCost = data.totalPITI + data.runningCostsAmount;
 
   return (
     <Document>
       <Page size="LETTER" style={styles.page}>
-        <Text style={styles.title}>INDEPENDENT BUYER RISK MEMORANDUM</Text>
-        <Text style={styles.subtitle}>VA-Financed Residential Property — Buyer Risk Review</Text>
-        <View style={styles.hr} />
+        <Letterhead title="INDEPENDENT BUYER RISK MEMORANDUM" subtitle="VA-Financed Residential Property — Buyer Risk Review" />
+
+        <View style={[styles.verdictBanner, verdictBannerStyle]}>
+          <Text style={styles.verdictBannerLabel}>OVERALL RECOMMENDATION</Text>
+          <Text style={styles.verdictBannerText}>{verdict.label}</Text>
+        </View>
+
+        <View style={styles.statRow}>
+          <StatCard
+            label="Monthly Cash Flow"
+            value={formatCurrency(data.moneyLeftOverMonthly)}
+            tone={data.moneyLeftOverMonthly < 0 ? "red" : "green"}
+          />
+          <StatCard label="Cash-on-Cash Return" value={formatPercent(data.cashOnCashPct, 1)} />
+          <StatCard label="Cap Rate" value={formatPercent(data.capRatePct * 100, 1)} />
+          <StatCard label="Total Monthly PITI" value={formatCurrency(data.totalPITI)} />
+        </View>
 
         <Table
           rows={[
@@ -118,7 +145,7 @@ export function UnderwritingReportDocument(data: UnderwritingReportData) {
           ]}
         />
 
-        {heading("Purpose & Scope")}
+        <SectionHeading n={headingNum++} title="Purpose & Scope" />
         <Text style={styles.p}>
           This memorandum is a complied assessment of the underwriting at {data.propertyAddressLine}. It is written
           for {data.preparedFor}&apos;s benefit and does not replace a licensed appraisal, CPA tax opinion, or
@@ -128,7 +155,7 @@ export function UnderwritingReportDocument(data: UnderwritingReportData) {
 
         {data.condoApproval?.applicable && (
           <>
-            {heading("VA Condo Project Approval Risk")}
+            <SectionHeading n={headingNum++} title="VA Condo Project Approval Risk" />
             <View style={[styles.flagBox, condoUnapproved ? styles.flagBoxRed : styles.flagBoxGreen]}>
               <Text style={styles.flagTitle}>
                 {data.condoApproval.status === "approved"
@@ -148,7 +175,7 @@ export function UnderwritingReportDocument(data: UnderwritingReportData) {
           </>
         )}
 
-        {heading("Tax Spike Risk")}
+        <SectionHeading n={headingNum++} title="Tax Spike Risk" />
         {data.hasOwnerRentalSplit && data.ownerOccupiedAnnualTax !== null ? (
           <Table
             rows={[
@@ -183,7 +210,8 @@ export function UnderwritingReportDocument(data: UnderwritingReportData) {
           </View>
         ))}
 
-        {heading("Rent Coverage vs. Adjusted Post-PCS Cost")}
+        <SectionHeading n={headingNum++} title="Rent Coverage vs. Adjusted Post-PCS Cost" />
+        <CashFlowBarChart rentAfterVacancy={data.rentAfterVacancy} totalMonthlyCost={totalMonthlyCost} />
         <Table
           rows={[
             ["Principal & Interest", formatCurrency(data.monthlyPI)],
@@ -201,8 +229,11 @@ export function UnderwritingReportDocument(data: UnderwritingReportData) {
         <Text style={styles.p}>
           Rent used in the underwriting: {formatCurrency(data.rentUsed)}/mo — {data.rentConfidenceLabel}. Rent after
           vacancy allowance: {formatCurrency(data.rentAfterVacancy)}/mo. Money left over per month:{" "}
-          {formatCurrency(data.moneyLeftOverMonthly)}. Money left over per year: {formatCurrency(data.moneyLeftOverYearly)}.
-          Cash-on-cash return: {formatPercent(data.cashOnCashPct, 2)}. Cap rate: {formatPercent(data.capRatePct * 100, 2)}.
+          <Text style={{ fontWeight: 700, color: data.moneyLeftOverMonthly < 0 ? RED : GREEN }}>
+            {formatCurrency(data.moneyLeftOverMonthly)}
+          </Text>
+          . Money left over per year: {formatCurrency(data.moneyLeftOverYearly)}. Cash-on-cash return:{" "}
+          {formatPercent(data.cashOnCashPct, 2)}. Cap rate: {formatPercent(data.capRatePct * 100, 2)}.
         </Text>
 
         {data.rentComps.length > 0 && (
@@ -225,11 +256,11 @@ export function UnderwritingReportDocument(data: UnderwritingReportData) {
         )}
 
         <View style={flagStyle}>
-          <Text style={styles.flagTitle}>Rent Sufficiency Flag</Text>
+          <Text style={styles.flagTitle}>Rent Sufficiency — Detailed Rationale</Text>
           <Text style={styles.p}>{verdict.label}</Text>
         </View>
 
-        {heading("Local Market Trends")}
+        <SectionHeading n={headingNum++} title="Local Market Trends" />
         {data.marketTrends ? (
           <>
             <Text style={styles.p}>{data.marketTrends.note}</Text>
@@ -256,7 +287,7 @@ export function UnderwritingReportDocument(data: UnderwritingReportData) {
           <Text style={styles.p}>Market trend research is not available for this submission.</Text>
         )}
 
-        {heading("Positive Factors")}
+        <SectionHeading n={headingNum++} title="Positive Factors" />
         <Text style={{ fontSize: 9, fontStyle: "italic", color: GREY, marginBottom: 6 }}>
           Balancing the risk items above:
         </Text>
@@ -267,7 +298,7 @@ export function UnderwritingReportDocument(data: UnderwritingReportData) {
           </View>
         ))}
 
-        {heading("Summary Risk Rating")}
+        <SectionHeading n={headingNum++} title="Summary Risk Rating" />
         <Table
           rows={[
             [
@@ -307,6 +338,8 @@ export function UnderwritingReportDocument(data: UnderwritingReportData) {
           consultation with a CPA and attorney regarding tax and legal matters specific to this transaction. Garrison
           Risk Review is not affiliated with, endorsed by, or acting on behalf of the Department of Veterans Affairs.
         </Text>
+
+        <RunningFooter leftText={`Garrison Risk Review — ${data.referenceId} — ${data.propertyAddressLine}`} />
       </Page>
     </Document>
   );
