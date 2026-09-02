@@ -17,9 +17,9 @@ export function calculateEntitlement(
 ): EntitlementResult {
   const entitlementCharged = data.priorVaLoans
     .filter((l) => l.status === "open")
-    .reduce((sum, l) => sum + l.originalLoanAmount * 0.25, 0);
+    .reduce((sum, l) => sum + (l.originalLoanAmount || 0) * 0.25, 0);
   const firstTimeUse = data.priorVaLoans.length === 0;
-  const totalEntitlementAvailable = data.financing.countyLoanLimit * 0.25;
+  const totalEntitlementAvailable = (data.financing.countyLoanLimit || 0) * 0.25;
   const entitlementRemaining = totalEntitlementAvailable - entitlementCharged;
   const requiredDownPayment = Math.max(0, purchasePrice * 0.25 - entitlementRemaining);
 
@@ -113,7 +113,7 @@ export function calculateResults(data: UnderwritingFormData): ResultsSummary {
   const tax = calculateTax(purchasePrice, data.property.state, data.tax, modelId);
 
   const monthlyTax = tax.applicableAnnualTax / 12;
-  const insuranceAnnual = data.expenses.insuranceAnnual;
+  const insuranceAnnual = data.expenses.insuranceAnnual || 0;
   const monthlyInsurance = insuranceAnnual / 12;
 
   const monthlyPITI = financing.monthlyPI + monthlyTax + monthlyInsurance + (data.financing.hoaMonthly || 0);
@@ -160,7 +160,7 @@ export function calculateResults(data: UnderwritingFormData): ResultsSummary {
 
     const annualDebtService = financing.monthlyPI * 12;
     const annualCashFlow = noi - annualDebtService;
-    const cashInvested = data.financing.downPayment;
+    const cashInvested = data.financing.downPayment || 0;
     cashOnCashPct = cashInvested > 0 ? (annualCashFlow / cashInvested) * 100 : null;
   }
 

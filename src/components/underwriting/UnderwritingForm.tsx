@@ -284,9 +284,7 @@ export function UnderwritingForm({
                       value={loan.originalLoanAmount}
                       onChange={(v) =>
                         update("priorVaLoans", (loans) =>
-                          loans.map((l) =>
-                            l.id === loan.id ? { ...l, originalLoanAmount: v === "" ? 0 : v } : l,
-                          ),
+                          loans.map((l) => (l.id === loan.id ? { ...l, originalLoanAmount: v } : l)),
                         )
                       }
                     />
@@ -337,9 +335,7 @@ export function UnderwritingForm({
                 <CurrencyField
                   id="currentRent"
                   value={data.rentalIncomeForNextLoan.currentRent}
-                  onChange={(v) =>
-                    update("rentalIncomeForNextLoan", (r) => ({ ...r, currentRent: v === "" ? 0 : v }))
-                  }
+                  onChange={(v) => update("rentalIncomeForNextLoan", (r) => ({ ...r, currentRent: v }))}
                 />
               </FieldShell>
               <FieldShell label="Current mortgage payment" htmlFor="currentMortgagePayment">
@@ -347,10 +343,7 @@ export function UnderwritingForm({
                   id="currentMortgagePayment"
                   value={data.rentalIncomeForNextLoan.currentMortgagePayment}
                   onChange={(v) =>
-                    update("rentalIncomeForNextLoan", (r) => ({
-                      ...r,
-                      currentMortgagePayment: v === "" ? 0 : v,
-                    }))
+                    update("rentalIncomeForNextLoan", (r) => ({ ...r, currentMortgagePayment: v }))
                   }
                 />
               </FieldShell>
@@ -359,10 +352,7 @@ export function UnderwritingForm({
                   id="householdMonthlyIncome"
                   value={data.rentalIncomeForNextLoan.householdMonthlyIncome}
                   onChange={(v) =>
-                    update("rentalIncomeForNextLoan", (r) => ({
-                      ...r,
-                      householdMonthlyIncome: v === "" ? 0 : v,
-                    }))
+                    update("rentalIncomeForNextLoan", (r) => ({ ...r, householdMonthlyIncome: v }))
                   }
                 />
               </FieldShell>
@@ -371,10 +361,7 @@ export function UnderwritingForm({
                   id="otherMonthlyDebts"
                   value={data.rentalIncomeForNextLoan.otherMonthlyDebts}
                   onChange={(v) =>
-                    update("rentalIncomeForNextLoan", (r) => ({
-                      ...r,
-                      otherMonthlyDebts: v === "" ? 0 : v,
-                    }))
+                    update("rentalIncomeForNextLoan", (r) => ({ ...r, otherMonthlyDebts: v }))
                   }
                 />
               </FieldShell>
@@ -554,7 +541,7 @@ export function UnderwritingForm({
               <CurrencyField
                 id="downPayment"
                 value={data.financing.downPayment}
-                onChange={(v) => update("financing", (f) => ({ ...f, downPayment: v === "" ? 0 : v }))}
+                onChange={(v) => update("financing", (f) => ({ ...f, downPayment: v }))}
               />
             </FieldShell>
             <FieldShell label="HOA (monthly)" htmlFor="hoaMonthly">
@@ -577,7 +564,7 @@ export function UnderwritingForm({
               onChange={(v) =>
                 update("financing", (f) => ({
                   ...f,
-                  countyLoanLimit: v === "" ? 0 : v,
+                  countyLoanLimit: v,
                   countyLoanLimitOverridden: true,
                 }))
               }
@@ -608,7 +595,7 @@ export function UnderwritingForm({
                   onChange={(v) =>
                     update("tax", (t) => ({
                       ...t,
-                      assessmentRatio: { ...t.assessmentRatio, totalMillageRate: v === "" ? 0 : v },
+                      assessmentRatio: { ...t.assessmentRatio, totalMillageRate: v },
                       assessmentRatioTouched: { ...t.assessmentRatioTouched, totalMillageRate: true },
                     }))
                   }
@@ -625,7 +612,7 @@ export function UnderwritingForm({
                   onChange={(v) =>
                     update("tax", (t) => ({
                       ...t,
-                      assessmentRatio: { ...t.assessmentRatio, schoolOperatingMillage: v === "" ? 0 : v },
+                      assessmentRatio: { ...t.assessmentRatio, schoolOperatingMillage: v },
                       assessmentRatioTouched: { ...t.assessmentRatioTouched, schoolOperatingMillage: true },
                     }))
                   }
@@ -642,7 +629,7 @@ export function UnderwritingForm({
                   onChange={(v) =>
                     update("tax", (t) => ({
                       ...t,
-                      assessmentRatio: { ...t.assessmentRatio, schoolBondMillage: v === "" ? 0 : v },
+                      assessmentRatio: { ...t.assessmentRatio, schoolBondMillage: v },
                       assessmentRatioTouched: { ...t.assessmentRatioTouched, schoolBondMillage: true },
                     }))
                   }
@@ -659,7 +646,7 @@ export function UnderwritingForm({
                   onChange={(v) =>
                     update("tax", (t) => ({
                       ...t,
-                      assessmentRatio: { ...t.assessmentRatio, ownerAssessmentRatioPct: v === "" ? 0 : v },
+                      assessmentRatio: { ...t.assessmentRatio, ownerAssessmentRatioPct: v },
                       assessmentRatioTouched: { ...t.assessmentRatioTouched, ownerAssessmentRatioPct: true },
                     }))
                   }
@@ -676,7 +663,7 @@ export function UnderwritingForm({
                   onChange={(v) =>
                     update("tax", (t) => ({
                       ...t,
-                      assessmentRatio: { ...t.assessmentRatio, investorAssessmentRatioPct: v === "" ? 0 : v },
+                      assessmentRatio: { ...t.assessmentRatio, investorAssessmentRatioPct: v },
                       assessmentRatioTouched: { ...t.assessmentRatioTouched, investorAssessmentRatioPct: true },
                     }))
                   }
@@ -698,7 +685,7 @@ export function UnderwritingForm({
                   onChange={(v) =>
                     update("tax", (t) => ({
                       ...t,
-                      homesteadExemption: { ...t.homesteadExemption, cityRatePct: v === "" ? 0 : v },
+                      homesteadExemption: { ...t.homesteadExemption, cityRatePct: v },
                       homesteadExemptionTouched: { ...t.homesteadExemptionTouched, cityRatePct: true },
                     }))
                   }
@@ -715,7 +702,7 @@ export function UnderwritingForm({
                   onChange={(v) =>
                     update("tax", (t) => ({
                       ...t,
-                      homesteadExemption: { ...t.homesteadExemption, schoolIsdRatePct: v === "" ? 0 : v },
+                      homesteadExemption: { ...t.homesteadExemption, schoolIsdRatePct: v },
                       homesteadExemptionTouched: { ...t.homesteadExemptionTouched, schoolIsdRatePct: true },
                     }))
                   }
@@ -732,7 +719,7 @@ export function UnderwritingForm({
                   onChange={(v) =>
                     update("tax", (t) => ({
                       ...t,
-                      homesteadExemption: { ...t.homesteadExemption, countyRatePct: v === "" ? 0 : v },
+                      homesteadExemption: { ...t.homesteadExemption, countyRatePct: v },
                       homesteadExemptionTouched: { ...t.homesteadExemptionTouched, countyRatePct: true },
                     }))
                   }
@@ -749,7 +736,7 @@ export function UnderwritingForm({
                   onChange={(v) =>
                     update("tax", (t) => ({
                       ...t,
-                      homesteadExemption: { ...t.homesteadExemption, schoolHomesteadExemption: v === "" ? 0 : v },
+                      homesteadExemption: { ...t.homesteadExemption, schoolHomesteadExemption: v },
                       homesteadExemptionTouched: { ...t.homesteadExemptionTouched, schoolHomesteadExemption: true },
                     }))
                   }
@@ -770,7 +757,7 @@ export function UnderwritingForm({
                 onChange={(v) =>
                   update("tax", (t) => ({
                     ...t,
-                    flatRate: { ...t.flatRate, combinedTaxRatePct: v === "" ? 0 : v },
+                    flatRate: { ...t.flatRate, combinedTaxRatePct: v },
                     flatRateTouched: { ...t.flatRateTouched, combinedTaxRatePct: true },
                   }))
                 }
@@ -791,7 +778,7 @@ export function UnderwritingForm({
                 onChange={(v) =>
                   update("tax", (t) => ({
                     ...t,
-                    fallback: { ...t.fallback, estimatedEffectiveTaxRatePct: v === "" ? 0 : v },
+                    fallback: { ...t.fallback, estimatedEffectiveTaxRatePct: v },
                   }))
                 }
               />
@@ -866,7 +853,7 @@ export function UnderwritingForm({
             <CurrencyField
               id="insuranceAnnual"
               value={data.expenses.insuranceAnnual}
-              onChange={(v) => update("expenses", (e) => ({ ...e, insuranceAnnual: v === "" ? 0 : v }))}
+              onChange={(v) => update("expenses", (e) => ({ ...e, insuranceAnnual: v }))}
             />
           </FieldShell>
 
@@ -896,14 +883,14 @@ export function UnderwritingForm({
               <PercentField
                 id="vacancyPct"
                 value={data.expenses.vacancyPct}
-                onChange={(v) => update("expenses", (e) => ({ ...e, vacancyPct: v === "" ? 0 : v }))}
+                onChange={(v) => update("expenses", (e) => ({ ...e, vacancyPct: v }))}
               />
             </FieldShell>
             <FieldShell label="Reserve % (repairs + management)" htmlFor="reservePct">
               <PercentField
                 id="reservePct"
                 value={data.expenses.reservePct}
-                onChange={(v) => update("expenses", (e) => ({ ...e, reservePct: v === "" ? 0 : v }))}
+                onChange={(v) => update("expenses", (e) => ({ ...e, reservePct: v }))}
               />
             </FieldShell>
           </div>

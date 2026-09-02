@@ -3,7 +3,8 @@ export type LoanStatus = "open" | "paid_off" | "sold";
 export type PriorVaLoan = {
   id: string;
   nickname: string;
-  originalLoanAmount: number;
+  /** number | "" so the field can be cleared and retyped naturally — see hoaMonthly below for the pattern this follows. Coerced to 0 wherever it's actually consumed downstream. */
+  originalLoanAmount: number | "";
   status: LoanStatus;
 };
 
@@ -19,27 +20,31 @@ export type RentConfidence = "low" | "moderate" | "high";
 
 export type StateModelId = "assessment_ratio" | "homestead_exemption" | "flat_rate" | "fallback";
 
+// All fields below are number | "" so each can be cleared and retyped
+// naturally instead of snapping back to 0 on every keystroke (the
+// hoaMonthly pattern, see below). Coerced to 0 wherever actually consumed
+// downstream (buildEngineInputs.ts, calculations.ts).
 export type AssessmentRatioFields = {
-  totalMillageRate: number;
-  schoolOperatingMillage: number;
-  schoolBondMillage: number;
-  ownerAssessmentRatioPct: number;
-  investorAssessmentRatioPct: number;
+  totalMillageRate: number | "";
+  schoolOperatingMillage: number | "";
+  schoolBondMillage: number | "";
+  ownerAssessmentRatioPct: number | "";
+  investorAssessmentRatioPct: number | "";
 };
 
 export type HomesteadExemptionFields = {
-  cityRatePct: number;
-  schoolIsdRatePct: number;
-  countyRatePct: number;
-  schoolHomesteadExemption: number;
+  cityRatePct: number | "";
+  schoolIsdRatePct: number | "";
+  countyRatePct: number | "";
+  schoolHomesteadExemption: number | "";
 };
 
 export type FlatRateFields = {
-  combinedTaxRatePct: number;
+  combinedTaxRatePct: number | "";
 };
 
 export type FallbackFields = {
-  estimatedEffectiveTaxRatePct: number;
+  estimatedEffectiveTaxRatePct: number | "";
 };
 
 export type UnderwritingFormData = {
@@ -71,16 +76,16 @@ export type UnderwritingFormData = {
   financing: {
     interestRate: number | "";
     loanTermYears: number;
-    downPayment: number;
     /**
-     * Allowed to sit empty while the buyer is typing, unlike most of this
-     * object's other plain-number fields — the onChange handler used to
-     * snap "" back to 0 on every keystroke, which made the field feel stuck
-     * at 0 and impossible to clear/retype naturally (caught 2026-09-01).
+     * number | "" so the field can be cleared and retyped naturally — the
+     * onChange handler used to snap "" back to 0 on every keystroke, which
+     * made it feel stuck at 0 (caught 2026-09-01 for hoaMonthly, same fix
+     * applied here and to every other field below carrying this comment).
      * Coerced to 0 wherever it's actually consumed downstream.
      */
+    downPayment: number | "";
     hoaMonthly: number | "";
-    countyLoanLimit: number;
+    countyLoanLimit: number | "";
     countyLoanLimitOverridden: boolean;
   };
   tax: {
@@ -92,12 +97,14 @@ export type UnderwritingFormData = {
     flatRateTouched: Partial<Record<keyof FlatRateFields, boolean>>;
     fallback: FallbackFields;
   };
+  // See the number | "" comment on financing.downPayment above — same
+  // clear-and-retype fix applied to every numeric field below.
   rentalIncomeForNextLoan: {
-    currentRent: number;
+    currentRent: number | "";
     hasSignedLease: boolean;
-    currentMortgagePayment: number;
-    householdMonthlyIncome: number;
-    otherMonthlyDebts: number;
+    currentMortgagePayment: number | "";
+    householdMonthlyIncome: number | "";
+    otherMonthlyDebts: number | "";
   };
   occupancy: {
     moveInDate: string;
@@ -105,11 +112,11 @@ export type UnderwritingFormData = {
   };
   expenses: {
     hasInsuranceQuote: boolean;
-    insuranceAnnual: number;
+    insuranceAnnual: number | "";
     selfManaged: boolean;
     knownCapitalNeeds: string;
-    vacancyPct: number;
-    reservePct: number;
+    vacancyPct: number | "";
+    reservePct: number | "";
   };
   rentEstimate: {
     monthlyRent: number | "";

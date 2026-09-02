@@ -7,22 +7,35 @@ import { getStateModelId } from "@/lib/underwriting/constants";
 import { regionalRentEstimate, regionalInsuranceEstimate } from "@/lib/research/regionalAverages";
 import { propertyTypeLabel } from "@/lib/underwriting/defaults";
 
+/** number | "" -> 0, for the tax sub-object fields (and anything else sharing that clear-and-retype pattern) at the one place they're actually consumed. */
+function numOr0(v: number | ""): number {
+  return typeof v === "number" ? v : 0;
+}
+
 /** Client form field names -> engine cell-map field names (only homestead_exemption differs). */
 function clientTaxInputsForModel(data: UnderwritingFormData, model: TaxModelId): Record<string, number> {
   switch (model) {
-    case "assessment_ratio":
-      return { ...data.tax.assessmentRatio };
+    case "assessment_ratio": {
+      const f = data.tax.assessmentRatio;
+      return {
+        totalMillageRate: numOr0(f.totalMillageRate),
+        schoolOperatingMillage: numOr0(f.schoolOperatingMillage),
+        schoolBondMillage: numOr0(f.schoolBondMillage),
+        ownerAssessmentRatioPct: numOr0(f.ownerAssessmentRatioPct),
+        investorAssessmentRatioPct: numOr0(f.investorAssessmentRatioPct),
+      };
+    }
     case "homestead_exemption":
       return {
-        cityTaxRatePct: data.tax.homesteadExemption.cityRatePct,
-        schoolIsdTaxRatePct: data.tax.homesteadExemption.schoolIsdRatePct,
-        countyTaxRatePct: data.tax.homesteadExemption.countyRatePct,
-        schoolHomesteadExemption: data.tax.homesteadExemption.schoolHomesteadExemption,
+        cityTaxRatePct: numOr0(data.tax.homesteadExemption.cityRatePct),
+        schoolIsdTaxRatePct: numOr0(data.tax.homesteadExemption.schoolIsdRatePct),
+        countyTaxRatePct: numOr0(data.tax.homesteadExemption.countyRatePct),
+        schoolHomesteadExemption: numOr0(data.tax.homesteadExemption.schoolHomesteadExemption),
       };
     case "flat_rate":
-      return { ...data.tax.flatRate };
+      return { combinedTaxRatePct: numOr0(data.tax.flatRate.combinedTaxRatePct) };
     case "fallback":
-      return { ...data.tax.fallback };
+      return { estimatedEffectiveTaxRatePct: numOr0(data.tax.fallback.estimatedEffectiveTaxRatePct) };
   }
 }
 
@@ -134,7 +147,7 @@ export function resolveYearlyInsurance(data: UnderwritingFormData, research: Res
   note?: string;
 } {
   if (data.expenses.hasInsuranceQuote) {
-    return { annual: data.expenses.insuranceAnnual, source: "customer" };
+    return { annual: numOr0(data.expenses.insuranceAnnual), source: "customer" };
   }
   if (research.status === "ok" && research.result.insuranceEstimate.annualPremium !== null) {
     return { annual: research.result.insuranceEstimate.annualPremium, source: "research_estimate" };
@@ -144,7 +157,7 @@ export function resolveYearlyInsurance(data: UnderwritingFormData, research: Res
   if (regional) {
     return { annual: regional.annual, source: "regional_average", note: regional.note };
   }
-  return { annual: data.expenses.insuranceAnnual, source: "default_estimate" };
+  return { annual: numOr0(data.expenses.insuranceAnnual), source: "default_estimate" };
 }
 
 export type RentSource = "customer" | "research" | "regional_average" | "unavailable";
@@ -183,7 +196,7 @@ export function buildEngineInputs(
   const priorLoans = data.priorVaLoans
     .filter((l) => l.status === "open")
     .slice(0, 2)
-    .map((l) => ({ nickname: l.nickname || "Prior VA loan", amount: l.originalLoanAmount }));
+    .map((l) => ({ nickname: l.nickname || "Prior VA loan", amount: numOr0(l.originalLoanAmount) }));
 
   const expectedMonthlyRent = resolveMonthlyRent(data, rentResearch).monthly;
   const yearlyInsurance = resolveYearlyInsurance(data, research).annual;
@@ -206,25 +219,25 @@ export function buildEngineInputs(
       arvValueAdded: 0,
     },
     priorLoans,
-    loanLimitForArea: data.financing.countyLoanLimit,
+    loanLimitForArea: numOr0(data.financing.countyLoanLimit),
     hasDisabilityRating: data.customer.vaDisabilityRating,
     financing: {
-      downPayment: data.financing.downPayment,
+      downPayment: numOr0(data.financing.downPayment),
       interestRate: typeof data.financing.interestRate === "number" ? data.financing.interestRate / 100 : 0,
       loanLengthYears: data.financing.loanTermYears,
     },
     taxInputs: toEngineFractions(resolved.taxInputs),
-    vacancyAllowancePct: data.expenses.vacancyPct / 100,
-    runningCostsPct: data.expenses.reservePct / 100,
+    vacancyAllowancePct: numOr0(data.expenses.vacancyPct) / 100,
+    runningCostsPct: numOr0(data.expenses.reservePct) / 100,
     rentalIncomeForNextLoan:
       priorLoans.length > 0
         ? {
-            monthlyRentPerLease: data.rentalIncomeForNextLoan.currentRent,
+            monthlyRentPerLease: numOr0(data.rentalIncomeForNextLoan.currentRent),
             hasSignedLease: true,
-            monthlyPaymentOnOldHome: data.rentalIncomeForNextLoan.currentMortgagePayment,
-            householdMonthlyIncome: data.rentalIncomeForNextLoan.householdMonthlyIncome,
+            monthlyPaymentOnOldHome: numOr0(data.rentalIncomeForNextLoan.currentMortgagePayment),
+            householdMonthlyIncome: numOr0(data.rentalIncomeForNextLoan.householdMonthlyIncome),
             newHomeMonthlyPayment: 0,
-            otherMonthlyDebts: data.rentalIncomeForNextLoan.otherMonthlyDebts,
+            otherMonthlyDebts: numOr0(data.rentalIncomeForNextLoan.otherMonthlyDebts),
           }
         : undefined,
   };
