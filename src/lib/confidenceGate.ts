@@ -6,6 +6,27 @@ export type ConfidenceGateResult = {
   /** True only when every material number clears the 90% confidence bar (customer-supplied or sourced research) — otherwise this holds for manual review rather than auto-sending. */
   passed: boolean;
   reasons: string[];
+  /**
+   * Which research call(s) actually failed the gate this round — added
+   * 2026-09-02 so a confidence-refinement retry (processSubmission.ts) can
+   * target only the call(s) that need another, broadened attempt instead of
+   * blanket-retrying every research call regardless of which one was
+   * actually the problem. `needsPropertyRefinement` maps to the insurance
+   * check (researchProperty's domain); `needsRentRefinement` maps to the
+   * rent checks (researchRentEstimate's domain, or the buyer's own
+   * estimate — see the note on that field for why a buyer-confidence
+   * shortfall still doesn't trigger a researchRentEstimate retry).
+   */
+  needsPropertyRefinement: boolean;
+  /**
+   * True only when the rent shortfall is on the *research* side
+   * (rentSource === "research"). A buyer-supplied rent estimate below the
+   * confidence bar has no research call to retry — broadening
+   * researchRentEstimate wouldn't touch the actual cause, so
+   * processSubmission's refinement loop has nothing useful to do for that
+   * case beyond waiting out MAX_CONFIDENCE_ROUNDS on the buyer's own number.
+   */
+  needsRentRefinement: boolean;
 };
 
 /**
@@ -56,6 +77,8 @@ export function evaluateConfidenceGate(
   rentSource: RentSource,
 ): ConfidenceGateResult {
   const reasons: string[] = [];
+  let needsPropertyRefinement = false;
+  let needsRentRefinement = false;
 
   // A research-backed market-rate estimate is accepted on its own — only a
   // bare, no-data-at-all placeholder (no buyer quote AND no research result)
@@ -64,6 +87,7 @@ export function evaluateConfidenceGate(
     reasons.push(
       "No insurance figure available from the buyer or research — the memo would use a generic placeholder rather than a market-rate estimate.",
     );
+    needsPropertyRefinement = true;
   }
 
   // A regional-average estimate is an intentional, disclosed fallback (tied
@@ -75,13 +99,17 @@ export function evaluateConfidenceGate(
     reasons.push("No rent figure available from the buyer, research, or a regional estimate.");
   } else if (rentSource === "customer" && customerRentConfidence !== CONFIDENCE_PASS_BAR) {
     reasons.push(`Rent estimate is not backed by at least ${CONFIDENCE_PASS_BAR} confidence from the buyer (rated "${customerRentConfidence}").`);
+    // Nothing to refine here — this is the buyer's own number, not a
+    // researchRentEstimate result, so a broader research search wouldn't
+    // change it.
   } else if (rentSource === "research" && rentResearch.status === "ok") {
     if (rentResearch.result.confidence !== CONFIDENCE_PASS_BAR) {
       reasons.push(
         `Rent estimate is not backed by ${CONFIDENCE_PASS_BAR}-confidence comps from research (rated "${rentResearch.result.confidence}": ${rentResearch.result.confidenceNote}).`,
       );
+      needsRentRefinement = true;
     }
   }
 
-  return { passed: reasons.length === 0, reasons };
+  return { passed: reasons.length === 0, reasons, needsPropertyRefinement, needsRentRefinement };
 }

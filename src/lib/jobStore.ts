@@ -62,6 +62,36 @@ export type ProcessingJob = {
    * correct starting value.
    */
   confidenceRounds: number;
+  /**
+   * Cumulative count of broadened, cache-bypassing refinement attempts made
+   * specifically for researchProperty / researchRentEstimate respectively
+   * (2026-09-02 targeted-retry fix) — distinct from `confidenceRounds`,
+   * which counts total rounds regardless of which call(s) actually needed
+   * another attempt. Incremented when the corresponding `pending*Refinement`
+   * flag below was true for the round that just finished, and RESET to 0
+   * the moment that side's gate check passes (both in processSubmission.ts
+   * — see the comment there for the exact reset logic and the concrete
+   * multi-round bug this fixed: without the reset, a call that failed once
+   * and then recovered kept a stale nonzero counter forever, which made it
+   * bypass its own cache and rerun a live broadened search on every later
+   * round even though it had already succeeded). A call whose side of the
+   * gate has never failed, or most recently passed, is always called with
+   * refinementRound 0, so it reuses its own cached result rather than
+   * repeating already-good work. Missing on any job record written before
+   * this feature — reads as 0/undefined, the correct starting value.
+   */
+  propertyRefinementRound: number;
+  rentRefinementRound: number;
+  /**
+   * Set by processSubmission.ts from evaluateConfidenceGate's result the
+   * moment a round comes back "needs_confidence_retry", and read back by
+   * runJobAttempt right after to decide which of the two counters above (if
+   * either) to increment before the next round. Not meaningful outside that
+   * narrow window — always false again once a round actually passes or the
+   * job reaches a terminal state.
+   */
+  pendingPropertyRefinement: boolean;
+  pendingRentRefinement: boolean;
   /** See HoldReason. null until (and unless) the job is finalized held_for_review. */
   holdReason: HoldReason;
   /** See PendingRetryKind. */

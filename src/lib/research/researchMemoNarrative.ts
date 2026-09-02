@@ -1,7 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { extractJson } from "./jsonExtract";
 import { withHardDeadline } from "./hardDeadline";
-import { RESEARCH_HARD_DEADLINE_MS, ANTHROPIC_CLIENT_TIMEOUT_MS } from "@/lib/pipeline/config";
+import { getCachedResearch, setCachedResearch } from "./researchCache";
+import { RESEARCH_HARD_DEADLINE_MS, ANTHROPIC_CLIENT_TIMEOUT_MS, RESEARCH_CACHE_TTL_MS, RESEARCH_CACHE_TTL_SECONDS } from "@/lib/pipeline/config";
 
 export type CondoApproval = {
   applicable: boolean;
@@ -67,6 +68,26 @@ Return your findings as a single JSON object matching this schema, and nothing e
 }
 "condo_approval" must be null if the property is not a condo.`;
 
+// Two-tier cache (in-memory + Redis backstop) — see researchProperty.ts's
+// cache comment for why both layers exist. Added 2026-09-02: this call used
+// to have NO caching at all, so a job with several Path A confidence-retry
+// rounds (see processSubmission.ts) reran this in full — a live web-search
+// call — on every single round, even though the narrative is never itself
+// part of the confidence gate (evaluateConfidenceGate only looks at
+// insurance/rent) and its answer rarely changes between rounds for the same
+// address. Keyed on address+state+isCondo since condo status changes what's
+// actually searched for (the VA condo-approval lookup only runs at all when
+// isCondo is true).
+const cache = new Map<string, { result: MemoNarrative; expiresAt: number }>();
+
+function normalizeCacheKey(address: string, state: string, isCondo: boolean): string {
+  return `${address.trim().toLowerCase()}|${state.trim().toUpperCase()}|${isCondo ? "condo" : "noncondo"}`;
+}
+
+function redisCacheKey(cacheKey: string): string {
+  return `research:memo-narrative:${cacheKey}`;
+}
+
 export async function researchMemoNarrative(params: {
   address: string;
   city: string;
@@ -86,6 +107,17 @@ export async function researchMemoNarrative(params: {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return { status: "not_configured" };
+  }
+
+  const cacheKey = normalizeCacheKey(params.address, params.state, params.isCondo);
+  const cached = cache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return { status: "ok", result: cached.result };
+  }
+  const redisCached = await getCachedResearch<MemoNarrative>(redisCacheKey(cacheKey));
+  if (redisCached) {
+    cache.set(cacheKey, { result: redisCached, expiresAt: Date.now() + RESEARCH_CACHE_TTL_MS });
+    return { status: "ok", result: redisCached };
   }
 
   // This call now runs in parallel with researchProperty/researchRentEstimate
@@ -177,6 +209,9 @@ export async function researchMemoNarrative(params: {
       positiveFactors: (parsed.positive_factors ?? []).filter((f): f is string => typeof f === "string"),
       marketRiskRating,
     };
+
+    cache.set(cacheKey, { result, expiresAt: Date.now() + RESEARCH_CACHE_TTL_MS });
+    await setCachedResearch(redisCacheKey(cacheKey), result, RESEARCH_CACHE_TTL_SECONDS);
 
     console.log("[memo-narrative] Completed", { address: params.address, state: params.state, durationMs: Date.now() - startedAt });
     return { status: "ok", result };

@@ -1,4 +1,89 @@
 {
-  "_readme": "Verified county/municipal property tax rates, keyed by \"STATE|ZIP\". When a lookup hits here, researchProperty.ts skips the Anthropic research call entirely for the tax portion (zero cost, instant). Each entry mirrors the taxModel/taxFields/taxInsights shape the AI research call would have produced. Only add entries here after the rate has actually been verified against the county Assessor/Auditor's own published schedule -- this file is trusted at face value with no further verification step, so bad data here goes straight into every affected customer's report. verifiedAt is an ISO date; entries older than the freshness window in taxRateDatabase.ts fall back to live research automatically.",
-  "entries": {}
+  "_readme": "Verified county/municipal property tax rates, keyed by \"STATE|ZIP\". When a lookup hits here, researchProperty.ts skips the Anthropic research call entirely for the tax portion (zero cost, instant). Each entry mirrors the taxModel/taxFields/taxInsights shape the AI research call would have produced. Only add entries here after the rate has actually been verified against the county Assessor/Auditor's own published schedule -- this file is trusted at face value with no further verification step, so bad data here goes straight into every affected customer's report. verifiedAt is an ISO date; entries older than the freshness window in taxRateDatabase.ts fall back to live research automatically. Since 2026-09-02, taxRateDatabase.ts also refuses (falls through to live research) any entry missing a value for a field its own taxModel requires -- see that file's isEntryComplete() -- so an intentionally-incomplete entry below is inert (never used) until someone fills in the missing number(s), rather than silently shipping a wrong tax figure.",
+  "_2026_09_02_expansion_note": "Entries added 2026-09-02 in response to incident GRR-MTKATP8P (Moore County, NC / zip 28387 -- a zip not in this database -- caused researchProperty to hit its hard deadline on 7 of 8 attempts). This sandboxed environment has no live access to county Assessor/Auditor sites or a tax-rate API, so these entries were NOT verified against a county's own published schedule the way the README above requires as the bar for production trust. Instead, per explicit owner-approved scope for this pass: (1) structural facts that are genuinely stable and well-established (a state's assessment-ratio percentages, Texas's state-mandated school homestead exemption amount) are marked confidence 'Confirmed' where the underlying fact itself -- not a specific dollar/mill figure that changes yearly -- is what's being asserted; (2) any specific current-year rate/millage number this pass could not verify against an authoritative source is left as value: null with an explanatory taxInsight, rather than guessing a plausible-sounding figure, exactly per the 'return null, don't fabricate' rule researchProperty.ts's own AI prompt uses; (3) the one number here sourced from a live search (Moore County's FY2026-27 county-only rate, via a third-party tax-aggregator site rather than the county's own PDF) is marked confidence 'Estimated' and flagged as county-only (excludes Southern Pines' town rate and any fire-district fee) for exactly that reason. Because the SC and TX entries below are missing fields their own tax model requires, the completeness guard in taxRateDatabase.ts (added the same day, in review, once this gap was spotted) means they are NOT currently used for any real submission -- they're kept here as documented starting points, safe to leave in place until someone fills in the missing rate(s) and they naturally start being used. Coverage is deliberately narrow (North Carolina, plus one South Carolina and one Texas example for taxModel diversity) rather than broad-but-unverified, per the task's explicit instruction not to invent precise numbers with false confidence.",
+  "entries": {
+    "NC|28387": {
+      "_confidence_note": "MEDIUM confidence. Combined-rate figure below is COUNTY-ONLY -- it does not include the Town of Southern Pines' municipal rate or any fire/EMS district fee that would actually apply to a specific Southern Pines parcel. Verify the full combined rate against Moore County's own published 'Tax Rates' PDF (https://www.moorecountync.gov/202/Tax) and, for a specific address, the Town of Southern Pines' own rate before this feeds a customer report.",
+      "county": "Moore County, NC (Southern Pines)",
+      "taxModel": "flat_rate",
+      "taxFields": {
+        "combinedTaxRatePct": {
+          "value": 0.29,
+          "confidence": "Estimated",
+          "source": "https://triangletaxmap.com/nc/moore/ (third-party tax-rate aggregator citing Moore County's FY2026-27 base county levy of $0.2900 per $100 valuation; NOT the county's own published schedule, and does NOT include the Town of Southern Pines' municipal add-on or any fire/EMS district fee)"
+        }
+      },
+      "taxInsights": [
+        {
+          "note": "North Carolina applies one tax rate regardless of owner-occupancy status -- there is no separate rental/investor assessment ratio or homestead exemption differential the way South Carolina or Texas have, so this figure applies the same whether the property is owner-occupied or a rental. Not tax or legal advice; confirm with the county assessor.",
+          "source": null
+        },
+        {
+          "note": "The rate above is Moore County's base county-only levy. The actual bill for a specific parcel in the Town of Southern Pines (zip 28387) also includes the town's own municipal tax rate and, for some parcels, a fire or EMS district fee -- this database does not yet have a verified combined figure for those add-ons. Not tax or legal advice; confirm the full combined rate with the Moore County Tax Department (910-947-2255) or the Town of Southern Pines before relying on it.",
+          "source": "https://www.moorecountync.gov/202/Tax"
+        }
+      ],
+      "verifiedAt": "2026-09-02",
+      "source": "https://triangletaxmap.com/nc/moore/ (third-party aggregator; NOT the county's own schedule -- see _confidence_note)"
+    },
+    "SC|29401": {
+      "_confidence_note": "HIGH confidence on the 4%/6% assessment-ratio split itself -- this is a South Carolina constitutional provision (Article X, Section 1) that has been stable for decades and is very unlikely to have changed. LOW/NO confidence on a specific current millage rate -- Charleston County's actual combined millage varies significantly by which specific tax district (city of Charleston vs. unincorporated county vs. one of several special districts/school zones) a parcel sits in, and this pass had no reliable current-year source for any one of those, so totalMillageRate/schoolOperatingMillage/schoolBondMillage are left null rather than guessed. Verify against Charleston County Auditor's own published millage tables for the specific tax district before use. NOTE: because those three fields are null, taxRateDatabase.ts's completeness guard currently skips this entry entirely (falls through to live research) until they're filled in.",
+      "county": "Charleston County, SC",
+      "taxModel": "assessment_ratio",
+      "taxFields": {
+        "ownerAssessmentRatioPct": {
+          "value": 4,
+          "confidence": "Confirmed",
+          "source": "S.C. Const. art. X, sec. 1 -- owner-occupied legal-residence property is assessed at 4% of fair market value statewide (requires the owner to file a legal-residence exemption application; long-standing, state-constitutional, not specific to Charleston County)."
+        },
+        "investorAssessmentRatioPct": {
+          "value": 6,
+          "confidence": "Confirmed",
+          "source": "S.C. Const. art. X, sec. 1 -- all other real property, including non-owner-occupied rental property, is assessed at 6% of fair market value statewide (the default ratio absent a legal-residence exemption)."
+        },
+        "totalMillageRate": { "value": null, "confidence": "Estimated", "source": null },
+        "schoolOperatingMillage": { "value": null, "confidence": "Estimated", "source": null },
+        "schoolBondMillage": { "value": null, "confidence": "Estimated", "source": null }
+      },
+      "taxInsights": [
+        {
+          "note": "South Carolina's 4% (owner-occupied) vs 6% (rental/investment) assessment ratio is one of the largest owner-vs-rental tax swings of any state a buyer converting a primary residence to a rental, or buying as a rental from the start, will see -- expect the taxable assessed value (and therefore the tax bill) to run roughly 50% higher than an otherwise-identical owner-occupied property in the same district. Not tax or legal advice; confirm with the county assessor.",
+          "source": null
+        },
+        {
+          "note": "Actual millage (the rate applied to the assessed value) was not verified for this pass and is left blank -- it varies by the specific city/unincorporated/special-district zone within Charleston County and by year. Look up the current combined millage for the exact parcel's tax district via the Charleston County Auditor before this feeds a customer report.",
+          "source": null
+        }
+      ],
+      "verifiedAt": "2026-09-02",
+      "source": "S.C. Const. art. X, sec. 1 (assessment ratios only -- see _confidence_note for what is NOT verified)"
+    },
+    "TX|77002": {
+      "_confidence_note": "HIGH confidence on the $100,000 state-mandated school-district homestead exemption amount -- this was set by a 2023 constitutional amendment (Prop 4) that raised it from $40,000 and is a single statewide figure, not something that varies by county. LOW/NO confidence on the actual city/ISD/county tax rates -- Houston-area rates vary by which specific city, MUD/utility district, and independent school district (HISD vs. others) a parcel falls in, and this pass had no reliable current-year source for any one combination, so those three fields are left null rather than guessed. Also note the homestead exemption only reduces the SCHOOL portion of the bill and only applies to an owner-occupied primary residence -- it does not apply once the property becomes a rental, which is the entire reason this is the 'homestead_exemption' tax model. NOTE: because those three fields are null, taxRateDatabase.ts's completeness guard currently skips this entry entirely (falls through to live research) until they're filled in.",
+      "county": "Harris County, TX (Houston)",
+      "taxModel": "homestead_exemption",
+      "taxFields": {
+        "schoolHomesteadExemption": {
+          "value": 100000,
+          "confidence": "Confirmed",
+          "source": "Texas Prop 4 (2023) / Tex. Const. art. VIII, sec. 1-b -- statewide school-district homestead exemption raised to $100,000 of appraised value for an owner-occupied primary residence; does not apply to a non-owner-occupied rental."
+        },
+        "cityTaxRatePct": { "value": null, "confidence": "Estimated", "source": null },
+        "schoolIsdTaxRatePct": { "value": null, "confidence": "Estimated", "source": null },
+        "countyTaxRatePct": { "value": null, "confidence": "Estimated", "source": null }
+      },
+      "taxInsights": [
+        {
+          "note": "Texas has no state income tax and funds schools heavily through property tax, so the school-district portion is usually the largest single line on a Texas tax bill. Converting an owner-occupied home to a rental removes the $100,000 school homestead exemption (and any city/county homestead exemption, which vary locally) from the taxable value -- expect a meaningful tax increase on conversion even though the nominal rate itself doesn't change. Not tax or legal advice; confirm with the county appraisal district.",
+          "source": null
+        },
+        {
+          "note": "City, school-district (ISD), and county tax rates were not verified for this pass and are left blank -- they vary by the specific ISD (Houston ISD vs. one of Harris County's many other districts) and municipal/MUD boundaries a parcel falls in. Look up the current combined rate for the exact parcel via the Harris County Appraisal District (HCAD) before this feeds a customer report.",
+          "source": null
+        }
+      ],
+      "verifiedAt": "2026-09-02",
+      "source": "Tex. Const. art. VIII, sec. 1-b / Prop 4 (2023) (homestead exemption amount only -- see _confidence_note for what is NOT verified)"
+    }
+  }
 }

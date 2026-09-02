@@ -3,7 +3,7 @@ import { extractJson } from "./jsonExtract";
 import { lookupTaxRate, taxRateEntryToResearchOutcome } from "./taxRateDatabase";
 import { withHardDeadline } from "./hardDeadline";
 import { getCachedResearch, setCachedResearch } from "./researchCache";
-import { RESEARCH_HARD_DEADLINE_MS, ANTHROPIC_CLIENT_TIMEOUT_MS, RESEARCH_CACHE_TTL_MS, RESEARCH_CACHE_TTL_SECONDS } from "@/lib/pipeline/config";
+import { PROPERTY_RESEARCH_HARD_DEADLINE_MS, ANTHROPIC_CLIENT_TIMEOUT_MS, RESEARCH_CACHE_TTL_MS, RESEARCH_CACHE_TTL_SECONDS } from "@/lib/pipeline/config";
 
 export type FieldConfidence = "Confirmed" | "Estimated";
 
@@ -240,14 +240,18 @@ export async function researchProperty(
   //
   // Fix: keep this client-level timeout generous (650s, its long-proven
   // value) so it stays a rarely-firing backstop as originally intended, and
-  // let withHardDeadline below be the real, precise cutoff at a more
-  // realistic 240s — enough headroom for genuinely slow searches without
-  // reintroducing regression #1.
+  // let withHardDeadline below be the real, precise cutoff.
+  //
+  // 2026-09-02: this call gets its own, longer deadline
+  // (PROPERTY_RESEARCH_HARD_DEADLINE_MS, currently 360s) instead of sharing
+  // RESEARCH_HARD_DEADLINE_MS with researchRentEstimate/researchMemoNarrative
+  // — see that constant's comment in config.ts for the incident data
+  // (GRR-MTKATP8P) and reasoning behind the specific number.
   const client = new Anthropic({ apiKey, timeout: ANTHROPIC_CLIENT_TIMEOUT_MS });
 
   const startedAt = Date.now();
   try {
-    const result = await withHardDeadline(RESEARCH_HARD_DEADLINE_MS, (signal) =>
+    const result = await withHardDeadline(PROPERTY_RESEARCH_HARD_DEADLINE_MS, (signal) =>
       runResearchAttempt(client, address, city, state, zip, knownFacts, cacheKey, refinementRound, signal),
     );
     console.log("[research] Attempt finished", { address, state, refinementRound, durationMs: Date.now() - startedAt });

@@ -23,6 +23,52 @@ function normalizeKey(state: string, zip: string): string {
 }
 
 /**
+ * Which taxFields keys each tax model actually needs for a real calculation
+ * — mirrors the field lists in researchProperty.ts's own system prompt and
+ * cellMap.ts's workbook cell mapping (dealCells.input for each model).
+ */
+const REQUIRED_FIELDS_BY_MODEL: Record<TaxRateEntry["taxModel"], readonly string[]> = {
+  assessment_ratio: ["totalMillageRate", "schoolOperatingMillage", "schoolBondMillage", "ownerAssessmentRatioPct", "investorAssessmentRatioPct"],
+  homestead_exemption: ["cityTaxRatePct", "schoolIsdTaxRatePct", "countyTaxRatePct", "schoolHomesteadExemption"],
+  flat_rate: ["combinedTaxRatePct"],
+  fallback: ["estimatedEffectiveTaxRatePct"],
+};
+
+/**
+ * Guards against exactly the failure mode a database entry with a null
+ * required field would otherwise cause (caught in review, 2026-09-02, on
+ * the SC/TX entries added the same day): computeUnderwriting.ts only ever
+ * writes a workbook cell when its value `!== undefined` (see
+ * `for (const [key, ref] of Object.entries(dealCells.input)) { const value =
+ * inputs.taxInputs[key]; if (value !== undefined) set(...) }`), and
+ * resolveTaxInputs (buildEngineInputs.ts) only adds a key to taxInputs when
+ * a research field's `value !== null`. A tax-rate-database entry that's
+ * missing a value for a field its own model needs would therefore leave
+ * that workbook input cell completely unset — not zero, not flagged, just
+ * silently absent — producing an artificially low (often near-$0) tax
+ * figure in a real, paid customer report, with no mechanism anywhere
+ * (the confidence gate deliberately never judges tax-field confidence — see
+ * confidenceGate.ts) to catch it before delivery. An incomplete entry is
+ * worse than no entry at all: with no entry, the lookup falls through to
+ * live research, which either finds a real number or returns null with an
+ * honest "couldn't confirm" note that the report can disclose; a
+ * *database* miss doesn't get that treatment anywhere downstream.
+ *
+ * This check makes an incomplete entry behave exactly like a cache miss —
+ * it's simply never returned, so the caller falls through to live research
+ * — rather than trusting partial data. It doesn't require every entry
+ * author to remember to keep entries complete; it makes an incomplete one
+ * inert by construction until the missing field(s) are actually filled in.
+ */
+function isEntryComplete(entry: TaxRateEntry): boolean {
+  const required = REQUIRED_FIELDS_BY_MODEL[entry.taxModel];
+  return required.every((key) => {
+    const field = entry.taxFields[key];
+    return field !== undefined && field.value !== null;
+  });
+}
+
+/**
  * Looks up a verified tax rate by state + ZIP, keyed on ZIP (rather than the
  * county name Claude would determine) because ZIP is known before any
  * research runs — that's what lets researchProperty() skip the Anthropic
@@ -37,6 +83,8 @@ export function lookupTaxRate(state: string, zip: string): TaxRateEntry | null {
   if (!Number.isFinite(verifiedAt)) return null;
   const age = Date.now() - verifiedAt;
   if (age < 0 || age > FRESHNESS_MS) return null;
+
+  if (!isEntryComplete(entry)) return null;
 
   return entry;
 }

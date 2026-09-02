@@ -11,7 +11,7 @@ import { researchMemoNarrative } from "@/lib/research/researchMemoNarrative";
 import { resolveTaxInputs, resolveYearlyInsurance, resolveMonthlyRent, buildEngineInputs } from "@/lib/pipeline/buildEngineInputs";
 import { computeUnderwriting } from "@/lib/workbook/computeUnderwriting";
 import { fillWorkbookXlsx } from "@/lib/workbook/fillWorkbookXlsx";
-import { evaluateConfidenceGate } from "@/lib/confidenceGate";
+import { evaluateConfidenceGate, type ConfidenceGateResult } from "@/lib/confidenceGate";
 import { getTaxDisclaimer } from "@/lib/underwriting/taxDisclaimers";
 import { propertyTypeLabel } from "@/lib/underwriting/defaults";
 import { UnderwritingReportDocument, type UnderwritingReportData } from "@/lib/pdf/UnderwritingReportDocument";
@@ -53,6 +53,65 @@ async function chargeAllowanceForJob(job: ProcessingJob): Promise<void> {
 export type ProcessSubmissionResult = "completed" | "held_for_review" | "needs_retry" | "needs_confidence_retry";
 
 /**
+ * The per-target part of a job's state a targeted confidence-refinement
+ * round reads and writes — pulled out as its own type (rather than the full
+ * ProcessingJob) so the two functions below, and their tests, don't need to
+ * construct a whole fake job.
+ */
+export type RefinementCounters = Pick<
+  ProcessingJob,
+  "propertyRefinementRound" | "rentRefinementRound" | "pendingPropertyRefinement" | "pendingRentRefinement"
+>;
+
+/**
+ * Called from processSubmission the moment a round's gate check comes back
+ * not-yet-exhausted (Path A, "needs_confidence_retry") — records which
+ * side(s) actually need another attempt AND resets the other side's
+ * refinement-round counter to 0.
+ *
+ * The reset is the fix for a real bug (caught in independent review,
+ * 2026-09-02): without it, a target's cumulative refinement-round counter
+ * only ever incremented, never decreased, even after that side's gate check
+ * started passing again. Since the counter is read directly as the
+ * refinementRound argument the *next* round (see processSubmission.ts),
+ * a stale nonzero leftover from an earlier failure made a now-passing call
+ * bypass its own cache and rerun a live, broadened search for no reason —
+ * reintroducing the extra-live-call/timeout risk this whole fix was meant
+ * to eliminate. Concrete trace that reproduced it: round 0 both property
+ * and rent fail (both counters -> 1); round 1 property now passes, rent
+ * still fails (only rent's counter should move) — without resetting
+ * property's counter back to 0 here, round 2 would still pass
+ * researchProperty a nonzero refinementRound despite property having
+ * already succeeded. See processSubmission.refinement.test.ts for the
+ * regression test.
+ */
+export function applyTargetedRefinementDecision(
+  counters: RefinementCounters,
+  gate: Pick<ConfidenceGateResult, "needsPropertyRefinement" | "needsRentRefinement">,
+): void {
+  counters.pendingPropertyRefinement = gate.needsPropertyRefinement;
+  counters.pendingRentRefinement = gate.needsRentRefinement;
+  if (!gate.needsPropertyRefinement) counters.propertyRefinementRound = 0;
+  if (!gate.needsRentRefinement) counters.rentRefinementRound = 0;
+}
+
+/**
+ * Called from runJobAttempt right after a round comes back
+ * "needs_confidence_retry" — bumps only the counter(s) whose
+ * pending*Refinement flag applyTargetedRefinementDecision just set, so the
+ * *next* round's broadened search actually broadens further for a
+ * repeatedly-failing target instead of retrying with the same parameters.
+ */
+export function bumpRefinementCounters(counters: RefinementCounters): void {
+  if (counters.pendingPropertyRefinement) {
+    counters.propertyRefinementRound = (counters.propertyRefinementRound ?? 0) + 1;
+  }
+  if (counters.pendingRentRefinement) {
+    counters.rentRefinementRound = (counters.rentRefinementRound ?? 0) + 1;
+  }
+}
+
+/**
  * The full research -> compute -> confidence gate -> PDFs -> delivery
  * pipeline, extracted unchanged from what used to be the intake route's
  * inline "Stage B" so both the first synchronous attempt and every
@@ -83,10 +142,29 @@ export type ProcessSubmissionResult = "completed" | "held_for_review" | "needs_r
 export async function processSubmission(job: ProcessingJob): Promise<ProcessSubmissionResult> {
   const { formData, referenceId } = job;
   const isCondo = formData.property.propertyType === "condo";
-  // 0 on the very first pass; >0 once a prior round's gate failed without
-  // being exhausted — see the "needs_confidence_retry" branch below and
-  // runJobAttempt, which increments this on the job before the next attempt.
+  // Overall round counter — 0 on the very first pass; >0 once a prior
+  // round's gate failed without being exhausted (see the
+  // "needs_confidence_retry" branch below and runJobAttempt).
   const refinementRound = job.confidenceRounds ?? 0;
+
+  // 2026-09-02 targeted-retry fix: a refinement round used to broaden and
+  // rerun BOTH researchProperty and researchRentEstimate uniformly,
+  // regardless of which one actually failed the confidence gate. That
+  // wasted a whole extra research call every round, and — worse — forced a
+  // researchProperty call that already SUCCEEDED to redo unnecessary
+  // broadened work under the (already tighter) research deadline, which is
+  // exactly the failure mode that made timeouts more likely on a call that
+  // didn't need retrying at all.
+  //
+  // Each call now gets its OWN refinement round, sourced from the job's
+  // separate propertyRefinementRound/rentRefinementRound counters — 0
+  // unless that specific call's side of the gate actually failed last
+  // round (see the pendingPropertyRefinement/pendingRentRefinement fields
+  // set below and incremented in runJobAttempt). Passing 0 for a call whose
+  // side already passed lets it hit its own 30-day cache and reuse the
+  // already-good result at zero cost instead of doing another live call.
+  const propertyRefinementRound = job.propertyRefinementRound ?? 0;
+  const rentRefinementRound = job.rentRefinementRound ?? 0;
 
   const researchStartedAt = Date.now();
   const [research, rentResearch, narrative] = await Promise.all([
@@ -101,7 +179,7 @@ export async function processSubmission(job: ProcessingJob): Promise<ProcessSubm
         baths: typeof formData.property.baths === "number" ? formData.property.baths : undefined,
         yearBuilt: typeof formData.property.yearBuilt === "number" ? formData.property.yearBuilt : undefined,
       },
-      { refinementRound },
+      { refinementRound: propertyRefinementRound },
     ),
     researchRentEstimate(
       formData.property.address,
@@ -119,8 +197,13 @@ export async function processSubmission(job: ProcessingJob): Promise<ProcessSubm
             }))
           : undefined,
       },
-      { refinementRound },
+      { refinementRound: rentRefinementRound },
     ),
+    // Never given a refinementRound — the narrative isn't part of the
+    // confidence gate at all (evaluateConfidenceGate only looks at
+    // insurance/rent), and it's now cached (see researchMemoNarrative.ts),
+    // so a repeat round for the same address is a free cache hit rather
+    // than a wasted live call.
     researchMemoNarrative({
       address: formData.property.address,
       city: formData.property.city,
@@ -137,6 +220,8 @@ export async function processSubmission(job: ProcessingJob): Promise<ProcessSubm
   console.log("[processSubmission] Research round finished", {
     referenceId,
     refinementRound,
+    propertyRefinementRound,
+    rentRefinementRound,
     durationMs: Date.now() - researchStartedAt,
     researchStatus: research.status,
     rentResearchStatus: rentResearch.status,
@@ -177,12 +262,23 @@ export async function processSubmission(job: ProcessingJob): Promise<ProcessSubm
       // A real finding, but not yet an exhausted one — keep working the
       // problem instead of giving up on the first below-bar answer. The
       // next round (see runJobAttempt) reruns research with a broader
-      // search asked for explicitly, not a repeat of the identical query.
-      console.log("[processSubmission] Confidence gate below 90% bar (Path A) — retrying with broader research", {
+      // search asked for explicitly, not a repeat of the identical query —
+      // targeted, per the gate's own needsPropertyRefinement/
+      // needsRentRefinement verdict, at only the call(s) that actually
+      // failed (see propertyRefinementRound/rentRefinementRound above).
+      // runJobAttempt reads these two flags right after this function
+      // returns to decide which counter(s) to bump before the next round.
+      // See applyTargetedRefinementDecision's own comment for why it also
+      // resets the *other* side's counter back to 0 here rather than only
+      // ever incrementing.
+      applyTargetedRefinementDecision(job, gate);
+      console.log("[processSubmission] Confidence gate below 90% bar (Path A) — retrying with targeted, broader research", {
         referenceId,
         roundsCompleted,
         maxRounds: MAX_CONFIDENCE_ROUNDS,
         reasons: gate.reasons,
+        needsPropertyRefinement: gate.needsPropertyRefinement,
+        needsRentRefinement: gate.needsRentRefinement,
       });
       return "needs_confidence_retry";
     }
@@ -423,6 +519,15 @@ export async function runJobAttempt(job: ProcessingJob): Promise<void> {
       job.attempts -= 1;
     }
     job.confidenceRounds = (job.confidenceRounds ?? 0) + 1;
+    // Targeted retry (2026-09-02): only bump the counter(s) for the call(s)
+    // processSubmission actually flagged as needing another broadened
+    // attempt — see bumpRefinementCounters and the
+    // propertyRefinementRound/rentRefinementRound comments on
+    // ProcessingJob. A call whose side of the gate already passed had its
+    // counter reset to 0 by applyTargetedRefinementDecision above and gets
+    // refinementRound 0 next round (see processSubmission.ts), so it reuses
+    // its own cached result instead of redoing already-good work.
+    bumpRefinementCounters(job);
     job.pendingRetryKind = "confidence";
     await saveJob(job);
     await notifyProcessingDelayOnce(job);

@@ -21,15 +21,58 @@
  */
 
 /**
- * Absolute wall-clock cutoff for a single research call (researchProperty,
- * researchRentEstimate, researchMemoNarrative), enforced by
- * withHardDeadline()'s own AbortController rather than the Anthropic SDK's
- * `timeout` option (see hardDeadline.ts for why the SDK option alone isn't
- * reliable). Tuned to 240s after two same-night regressions — see
- * researchProperty.ts's incident log for the full story of 25min and 180s
- * both being wrong in opposite directions.
+ * Absolute wall-clock cutoff for a single research call — researchRentEstimate
+ * and researchMemoNarrative share this one; researchProperty gets its own,
+ * longer PROPERTY_RESEARCH_HARD_DEADLINE_MS below (2026-09-02) since it
+ * consistently needs more time. Enforced by withHardDeadline()'s own
+ * AbortController rather than the Anthropic SDK's `timeout` option (see
+ * hardDeadline.ts for why the SDK option alone isn't reliable). Tuned to
+ * 240s after two same-night regressions — see researchProperty.ts's
+ * incident log for the full story of 25min and 180s both being wrong in
+ * opposite directions.
  */
 export const RESEARCH_HARD_DEADLINE_MS = 240_000;
+
+/**
+ * Dedicated hard deadline for researchProperty() only (2026-09-02 speed
+ * pass, incident GRR-MTKATP8P — Moore County, NC, zip 28387, a zip NOT in
+ * taxRateDatabase.json). researchRentEstimate() and researchMemoNarrative()
+ * stay on the shared RESEARCH_HARD_DEADLINE_MS above.
+ *
+ * researchProperty() does genuinely more sub-work per call than the other
+ * two: on a tax-database miss it has to find the county tax district, pull
+ * the current official rate, classify which of four tax models applies,
+ * *and* produce a market-rate insurance estimate — all in one web-search
+ * call — versus researchRentEstimate's single comps search or
+ * researchMemoNarrative's single-topic passes. The incident data backs this
+ * up directly: on GRR-MTKATP8P, researchProperty hit the 240s deadline on 7
+ * of 8 attempts, while the other two calls (which don't depend on the tax
+ * database and ran on the same job) mostly succeeded in 100-200s. The one
+ * researchProperty attempt that *did* succeed took 151s — already 63% of
+ * the 240s budget for a call sharing that budget with the two harder
+ * sub-tasks above.
+ *
+ * Picked 360s (1.5x RESEARCH_HARD_DEADLINE_MS) rather than a bigger jump:
+ * the one success (151s) suggests a genuinely-completing call mostly lands
+ * well under 240s already, so the failures look like real multi-round
+ * search work running past 240s, not a call that needs many multiples of
+ * it — 1.5x gives a real additional round of search headroom without
+ * reintroducing the 2026-09-01 regression class this file's header
+ * describes (an overlong deadline letting one stuck call eat the delivery
+ * budget). Re-check this number against fresh incident data after the
+ * change ships; there wasn't a large enough sample to fit a precise
+ * percentile.
+ *
+ * Headroom check (see ROUTE_MAX_DURATION_SECONDS below): the three research
+ * calls run in parallel (see processSubmission.ts), so the fan-out's own
+ * worst case is now bounded by this constant, not RESEARCH_HARD_DEADLINE_MS
+ * — 360s, leaving 600s - 360s = 240s for PDF/XLSX generation and email
+ * delivery afterward, which in practice takes low single-digit seconds, not
+ * minutes. If this constant is ever raised again, re-verify that headroom
+ * still holds (config.test.ts only checks the maxDuration literals stay in
+ * sync with each other, not that they leave enough room for this deadline).
+ */
+export const PROPERTY_RESEARCH_HARD_DEADLINE_MS = 360_000;
 
 /**
  * The Anthropic SDK client's own `timeout` option. Deliberately much more

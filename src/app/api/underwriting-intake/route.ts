@@ -122,6 +122,10 @@ export async function POST(request: NextRequest) {
     attemptInProgress: true,
     notifiedProcessingDelay: false,
     confidenceRounds: 0,
+    propertyRefinementRound: 0,
+    rentRefinementRound: 0,
+    pendingPropertyRefinement: false,
+    pendingRentRefinement: false,
     holdReason: null,
     pendingRetryKind: null,
   };
