@@ -413,6 +413,15 @@ export async function runJobAttempt(job: ProcessingJob): Promise<void> {
     // Path A, not yet exhausted — keep working the problem. Not charged,
     // not held; just one more round of broader research on the next sweep
     // tick (spaced by the confidence backoff — see retryPolicy.ts).
+    if (job.pendingRetryKind === "infra") {
+      // The caller pre-incremented `attempts` expecting this to be another
+      // infra-fault retry (since that's what the job was waiting on going
+      // in), but research actually succeeded this round and produced a
+      // genuine below-bar confidence result instead — undo that increment
+      // so a successful research round never quietly eats into the
+      // infra-fault budget (see the mirrored correction below).
+      job.attempts -= 1;
+    }
     job.confidenceRounds = (job.confidenceRounds ?? 0) + 1;
     job.pendingRetryKind = "confidence";
     await saveJob(job);
@@ -421,6 +430,15 @@ export async function runJobAttempt(job: ProcessingJob): Promise<void> {
   }
 
   // result === "needs_retry" (Path B, infrastructure fault)
+  if (job.pendingRetryKind === "confidence") {
+    // The caller did NOT increment `attempts` for this call, since the job
+    // was waiting on a confidence-refinement round — but this attempt
+    // actually hit an infrastructure fault instead. Correct the undercount
+    // here so every real infra attempt counts toward MAX_INFRA_ATTEMPTS
+    // regardless of which retry kind was expected going in (caught in
+    // review 2026-09-02, before this ever reached a real submission).
+    job.attempts += 1;
+  }
   const exhausted = job.attempts >= MAX_INFRA_ATTEMPTS || !isJobStoreConfigured();
   if (exhausted) {
     // Every retry has been used, or there's no job store configured to
