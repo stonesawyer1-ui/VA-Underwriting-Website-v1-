@@ -8,10 +8,9 @@ import {
 } from "./constants";
 import type { PropertyType, UnderwritingFormData, UnitBedBath } from "./types";
 
-/** How many per-unit bed/bath rows a multi-unit property type gets — single_family and condo get none, since there's only one unit. An ADU counts as a second unit (main house + the accessory unit), same treatment as a duplex. */
-export function unitCountForPropertyType(type: PropertyType): number {
+/** How many genuinely separate rentable units a property type has on its own, before an ADU is factored in — single_family and condo are 1 (no breakdown needed on their own), duplex/triplex/fourplex are their obvious count. */
+function baseUnitCount(type: PropertyType): number {
   switch (type) {
-    case "single_family_adu":
     case "duplex":
       return 2;
     case "triplex":
@@ -19,31 +18,46 @@ export function unitCountForPropertyType(type: PropertyType): number {
     case "fourplex":
       return 4;
     default:
-      return 0;
+      return 1;
   }
 }
 
-/** Human-readable label for a property type — a plain underscore-replace reads fine for "single family" but not for "single family adu", since ADU is an acronym and should stay capitalized. */
-export function propertyTypeLabel(type: PropertyType): string {
-  switch (type) {
-    case "single_family":
-      return "single family";
-    case "single_family_adu":
-      return "single family + ADU";
-    case "duplex":
-      return "duplex";
-    case "triplex":
-      return "triplex";
-    case "fourplex":
-      return "fourplex";
-    case "condo":
-      return "condo";
-  }
+/**
+ * How many per-unit bed/bath rows the property gets, given its type AND
+ * whether it has an ADU — an ADU is an extra rentable unit that can sit on
+ * ANY property type (a single-family home, a duplex, even a fourplex can
+ * all have one), not just single-family, so this isn't baked into
+ * PropertyType itself. Returns 0 (no breakdown row shown at all) only for
+ * a plain single unit (single_family/condo with no ADU) — everything else
+ * gets one row per rentable unit, main structure plus the ADU if present.
+ */
+export function unitCountForPropertyType(type: PropertyType, hasAdu: boolean): number {
+  const total = baseUnitCount(type) + (hasAdu ? 1 : 0);
+  return total > 1 ? total : 0;
 }
 
-/** Resizes a units array to match a property type's unit count, preserving existing rows where possible instead of wiping user input on every keystroke-adjacent re-render. */
-export function resizeUnitsForPropertyType(units: UnitBedBath[], type: PropertyType): UnitBedBath[] {
-  const count = unitCountForPropertyType(type);
+/** Human-readable label for a property type — a plain underscore-replace reads fine for "single family" but not for "ADU", since it's an acronym and should stay capitalized. */
+export function propertyTypeLabel(type: PropertyType, hasAdu: boolean): string {
+  const base = (() => {
+    switch (type) {
+      case "single_family":
+        return "single family";
+      case "duplex":
+        return "duplex";
+      case "triplex":
+        return "triplex";
+      case "fourplex":
+        return "fourplex";
+      case "condo":
+        return "condo";
+    }
+  })();
+  return hasAdu ? `${base} + ADU` : base;
+}
+
+/** Resizes a units array to match a property's total rentable-unit count (base type plus ADU, if any), preserving existing rows where possible instead of wiping user input on every keystroke-adjacent re-render. */
+export function resizeUnitsForPropertyType(units: UnitBedBath[], type: PropertyType, hasAdu: boolean): UnitBedBath[] {
+  const count = unitCountForPropertyType(type, hasAdu);
   if (count === 0) return [];
   const next = units.slice(0, count);
   while (next.length < count) next.push({ beds: "", baths: "" });
@@ -68,6 +82,7 @@ export function createDefaultFormData(initialTier?: UnderwritingFormData["tier"]
       zip: "",
       county: "",
       propertyType: "single_family",
+      hasAdu: false,
       beds: "",
       baths: "",
       units: [],

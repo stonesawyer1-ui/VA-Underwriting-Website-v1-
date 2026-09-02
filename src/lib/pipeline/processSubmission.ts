@@ -335,7 +335,7 @@ export async function processSubmission(job: ProcessingJob): Promise<ProcessSubm
   const reportData: UnderwritingReportData = {
     propertyAddressLine: `${formData.property.address}, ${formData.property.city}, ${formData.property.state} ${formData.property.zip}`,
     county: formData.property.county,
-    propertyTypeLine: `${propertyTypeLabel(formData.property.propertyType)}, ${formData.property.beds || "?"} bed / ${formData.property.baths || "?"} bath${unitBreakdownSuffix(formData.property.units)}, ${formData.property.sqft || "?"} sf, built ${formData.property.yearBuilt || "?"}`,
+    propertyTypeLine: `${propertyTypeLabel(formData.property.propertyType, formData.property.hasAdu)}, ${formData.property.beds || "?"} bed / ${formData.property.baths || "?"} bath${unitBreakdownSuffix(formData.property.units)}, ${formData.property.sqft || "?"} sf, built ${formData.property.yearBuilt || "?"}`,
     isCondo,
     preparedFor: formData.customer.name || "Buyer",
     dateOfMemo: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),

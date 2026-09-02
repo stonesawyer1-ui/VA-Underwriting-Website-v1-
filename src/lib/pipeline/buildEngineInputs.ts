@@ -207,7 +207,7 @@ export function buildEngineInputs(
       address: data.property.address,
       cityStateZip: `${data.property.city}, ${data.property.state} ${data.property.zip}`,
       county: data.property.county,
-      propertyType: propertyTypeLabel(data.property.propertyType),
+      propertyType: propertyTypeLabel(data.property.propertyType, data.property.hasAdu),
       bedsBaths: `${data.property.beds || "?"} / ${data.property.baths || "?"}`,
       sqft: typeof data.property.sqft === "number" ? data.property.sqft : 0,
       yearBuilt: typeof data.property.yearBuilt === "number" ? data.property.yearBuilt : 0,

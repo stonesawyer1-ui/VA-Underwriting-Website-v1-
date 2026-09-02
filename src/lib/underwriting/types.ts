@@ -8,7 +8,7 @@ export type PriorVaLoan = {
   status: LoanStatus;
 };
 
-export type PropertyType = "single_family" | "single_family_adu" | "duplex" | "triplex" | "fourplex" | "condo";
+export type PropertyType = "single_family" | "duplex" | "triplex" | "fourplex" | "condo";
 export type OwnershipStatus = "evaluating_purchase" | "already_owned";
 
 export type UnitBedBath = {
@@ -64,9 +64,11 @@ export type UnderwritingFormData = {
     zip: string;
     county: string;
     propertyType: PropertyType;
+    /** Whether the property also has an Accessory Dwelling Unit — independent of propertyType, since an ADU can sit on any of them (a single-family home, a duplex, even a fourplex). Adds one extra rentable unit on top of propertyType's own count; see unitCountForPropertyType. */
+    hasAdu: boolean;
     beds: number | "";
     baths: number | "";
-    /** Per-unit bed/bath breakdown for duplex/triplex/fourplex — optional, one entry per unit. Purely descriptive: it feeds the PDF's property line and gives research a per-unit-type target for rent comps, but the cash-flow engine still uses one blended monthly rent, unaffected by this. */
+    /** Per-unit bed/bath breakdown for a multi-unit property and/or an ADU — optional, one entry per unit. Purely descriptive: it feeds the PDF's property line and gives research a per-unit-type target for rent comps, but the cash-flow engine still uses one blended monthly rent, unaffected by this. */
     units: UnitBedBath[];
     sqft: number | "";
     yearBuilt: number | "";

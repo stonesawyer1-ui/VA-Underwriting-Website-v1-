@@ -96,6 +96,15 @@ export type ProcessingJob = {
   holdReason: HoldReason;
   /** See PendingRetryKind. */
   pendingRetryKind: PendingRetryKind;
+  /**
+   * Whether the one-time "this has been processing for over an hour" owner
+   * alert (sendPastHourAlertEmail) has already gone out — sent once per
+   * job, not on every sweep tick past the threshold. See
+   * PAST_HOUR_ALERT_THRESHOLD_MS in pipeline/config.ts. Missing on any job
+   * record written before this feature — reads as falsy, the correct
+   * starting value.
+   */
+  pastHourAlertSent: boolean;
 };
 
 const PENDING_SET_KEY = "pending_jobs";

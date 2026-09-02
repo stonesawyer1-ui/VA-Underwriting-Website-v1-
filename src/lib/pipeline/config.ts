@@ -86,6 +86,21 @@ export const PROPERTY_RESEARCH_HARD_DEADLINE_MS = 360_000;
 export const ANTHROPIC_CLIENT_TIMEOUT_MS = 650_000;
 
 /**
+ * How long a job can sit "processing" (not yet delivered, not yet held for
+ * review) before the retry sweep sends the owner a one-time early-warning
+ * email (see sendPastHourAlertEmail, checked in process-pending/route.ts).
+ * Added 2026-09-03 at the owner's explicit request: with the
+ * confidence-seeking / infra-backoff redesign, a job can now legitimately
+ * keep retrying for a long time (see MAX_INFRA_ATTEMPTS's comment — up to
+ * ~1.5-2 hours in the worst case) before ever reaching a terminal state, so
+ * "wait for it to finish, then get notified" isn't good enough anymore —
+ * the owner wants to know it's running long WHILE it's still in flight, so
+ * they can bring the referenceId to Claude for a real-time investigation
+ * rather than only after the fact.
+ */
+export const PAST_HOUR_ALERT_THRESHOLD_MS = 60 * 60 * 1000;
+
+/**
  * How often Vercel Cron invokes /api/process-pending (see vercel.json's
  * "schedule": "* * * * *"). This constant doesn't configure the cron itself
  * — vercel.json's schedule string is what Vercel actually reads — but every

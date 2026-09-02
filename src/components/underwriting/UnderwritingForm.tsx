@@ -432,12 +432,11 @@ export function UnderwritingForm({
                   update("property", (p) => ({
                     ...p,
                     propertyType: nextType,
-                    units: resizeUnitsForPropertyType(p.units, nextType),
+                    units: resizeUnitsForPropertyType(p.units, nextType, p.hasAdu),
                   }));
                 }}
                 options={[
                   { value: "single_family", label: "Single Family" },
-                  { value: "single_family_adu", label: "Single Family + ADU" },
                   { value: "duplex", label: "Duplex" },
                   { value: "triplex", label: "Triplex" },
                   { value: "fourplex", label: "Fourplex" },
@@ -445,10 +444,27 @@ export function UnderwritingForm({
                 ]}
               />
             </FieldShell>
-            <FieldShell label={unitCountForPropertyType(data.property.propertyType) > 0 ? "Beds (total)" : "Beds"} htmlFor="beds">
+            <FieldShell label="Has an ADU?" htmlFor="hasAdu" help="Accessory Dwelling Unit — a separate rentable unit on the same lot, in addition to the main structure. Available for any property type.">
+              <ToggleField
+                value={data.property.hasAdu ? "yes" : "no"}
+                onChange={(v) => {
+                  const nextHasAdu = v === "yes";
+                  update("property", (p) => ({
+                    ...p,
+                    hasAdu: nextHasAdu,
+                    units: resizeUnitsForPropertyType(p.units, p.propertyType, nextHasAdu),
+                  }));
+                }}
+                options={[
+                  { value: "no", label: "No" },
+                  { value: "yes", label: "Yes" },
+                ]}
+              />
+            </FieldShell>
+            <FieldShell label={unitCountForPropertyType(data.property.propertyType, data.property.hasAdu) > 0 ? "Beds (total)" : "Beds"} htmlFor="beds">
               <NumberField id="beds" value={data.property.beds} onChange={(v) => update("property", (p) => ({ ...p, beds: v }))} />
             </FieldShell>
-            <FieldShell label={unitCountForPropertyType(data.property.propertyType) > 0 ? "Baths (total)" : "Baths"} htmlFor="baths">
+            <FieldShell label={unitCountForPropertyType(data.property.propertyType, data.property.hasAdu) > 0 ? "Baths (total)" : "Baths"} htmlFor="baths">
               <NumberField id="baths" value={data.property.baths} onChange={(v) => update("property", (p) => ({ ...p, baths: v }))} />
             </FieldShell>
             <FieldShell label="Sqft" htmlFor="sqft">
@@ -456,7 +472,7 @@ export function UnderwritingForm({
             </FieldShell>
           </div>
 
-          {unitCountForPropertyType(data.property.propertyType) > 0 && (
+          {unitCountForPropertyType(data.property.propertyType, data.property.hasAdu) > 0 && (
             <div className="rounded-sm border border-navy-900/10 bg-navy-50 p-4">
               <p className="text-xs font-semibold tracking-wide text-navy-900/60 uppercase">
                 Per-unit breakdown (optional)

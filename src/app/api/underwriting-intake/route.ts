@@ -128,6 +128,7 @@ export async function POST(request: NextRequest) {
     pendingRentRefinement: false,
     holdReason: null,
     pendingRetryKind: null,
+    pastHourAlertSent: false,
   };
 
   // Persisted BEFORE any slow work starts — this is the durability guarantee.

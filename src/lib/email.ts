@@ -209,6 +209,67 @@ export async function sendUnderwritingReportToCustomer(params: {
 }
 
 /**
+ * Owner-facing early-warning alert: fired exactly once per job, the moment
+ * it's been sitting "processing" — not yet delivered, not yet held for
+ * review, still genuinely working the problem — for more than an hour
+ * (see PAST_HOUR_ALERT_THRESHOLD_MS in pipeline/config.ts and the check in
+ * process-pending/route.ts, which is the only caller). Added 2026-09-03 at
+ * the owner's explicit request: they want to know a submission is running
+ * unusually long WHILE it's still in flight, not only after it resolves
+ * (sendHoldForReviewNotice already covers "it's finished and needs a human"
+ * — this is deliberately upstream of that, since the confidence-seeking /
+ * infra-backoff redesign can legitimately keep retrying for a long time
+ * before ever reaching a terminal state).
+ *
+ * Distinct from sendStillProcessingNotice, which is a single, generic,
+ * customer-facing reassurance sent once a submission first needs more than
+ * one attempt — this one is owner-only, fires later (an hour in, not on the
+ * first retry), and carries the actual diagnostic snapshot (attempts,
+ * confidence rounds, which retry kind it's waiting on) the owner would need
+ * to hand to Claude for a real investigation, the way tonight's incident
+ * reports have all started from a referenceId and a "what happened" ask.
+ */
+export async function sendPastHourAlertEmail(params: {
+  referenceId: string;
+  customerEmail: string;
+  propertyAddress: string;
+  elapsedMinutes: number;
+  attempts: number;
+  confidenceRounds: number;
+  pendingRetryKind: "infra" | "confidence" | null;
+}) {
+  const client = getClient();
+  if (!client) return;
+
+  const html = `
+    <div style="font-family:sans-serif;max-width:560px;margin:0 auto;">
+      <h2 style="color:#c8102e;">[Still processing after ${params.elapsedMinutes} min] ${params.referenceId}</h2>
+      <p style="color:#222;">
+        ${params.propertyAddress} (${params.customerEmail}) submitted ${params.elapsedMinutes} minutes ago and still
+        hasn't been delivered or finalized — it's still genuinely retrying, not stuck or lost, but this is longer
+        than usual and may be worth asking Claude to look into.
+      </p>
+      <ul style="color:#222;">
+        <li>Infra-fault attempts: ${params.attempts}</li>
+        <li>Confidence-refinement rounds: ${params.confidenceRounds}</li>
+        <li>Currently waiting on: ${params.pendingRetryKind ?? "n/a"}</li>
+      </ul>
+      <p style="color:#888;font-size:12px;">
+        Reference ${params.referenceId} when you message Claude about this — that's enough for a full timeline pull
+        from the runtime logs, the same way past incidents have started.
+      </p>
+    </div>
+  `;
+
+  await sendOrThrow(client, {
+    from: resolveFromAddress(),
+    to: siteConfig.notifyEmail,
+    subject: `[Still processing after ${params.elapsedMinutes} min] ${params.propertyAddress} (${params.referenceId})`,
+    html,
+  });
+}
+
+/**
  * The owner-facing alerting hook: fired exactly once, the moment a job is
  * finalized held_for_review, so the owner never has to test-submit to
  * notice one happened. `holdReason` distinguishes the two structurally
