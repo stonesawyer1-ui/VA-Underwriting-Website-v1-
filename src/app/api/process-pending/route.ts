@@ -8,15 +8,16 @@ import { shouldRetryJob } from "@/lib/pipeline/retryPolicy";
 export const maxDuration = 600;
 
 /**
- * Called every 2 minutes by Vercel Cron (see vercel.json) — tightened from
- * 5 minutes on 2026-09-01 (stonesawyer1@gmail.com, GRR-MTJ0ZS2V) alongside
- * shrinking each research call's own hard deadline from 25min to 3min: the
- * old 5-minute cadence meant a customer whose first attempt failed still
- * waited up to 5 real minutes just for the *next* sweep to notice, on top
- * of however long that failed attempt itself took. At 2 minutes, five
- * attempts (see MAX_ATTEMPTS in processSubmission.ts) comfortably resolve
- * — success or honest hold-for-review — well inside a 25-minute target
- * even in the worst case where every attempt fails.
+ * Called every 1 minute by Vercel Cron (see vercel.json) — tightened twice
+ * on 2026-09-01: 5min -> 2min alongside dropping each research call's hard
+ * deadline from 25min to 3min (GRR-MTJ0ZS2V), then that 3min deadline
+ * turned out too short for legitimate multi-round searches and reliably
+ * failed a real submission outright (GRR-MTJ2RJ26, see researchProperty.ts)
+ * — the deadline went back up to 4min, so the cron interval came down to
+ * 1min to compensate and keep the worst case inside 25 minutes: five
+ * attempts (see MAX_ATTEMPTS in processSubmission.ts) at up to 4min each,
+ * spaced by up to 1min of detection latency, tops out around 24 real
+ * minutes even if every attempt fails outright.
  *
  * Vercel Cron invokes its path with a GET request — a POST-only handler
  * here 405s on every single tick (caught 2026-08-31 in runtime logs). GET

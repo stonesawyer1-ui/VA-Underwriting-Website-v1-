@@ -94,19 +94,22 @@ export async function researchMemoNarrative(params: {
   // The SDK's own `timeout` option turned out NOT to be a reliable absolute
   // deadline on its own — a real submission ran well past it without ever
   // throwing, and Vercel's 300s ceiling killed the whole request instead.
-  // withHardDeadline() enforces a real one via AbortController; the
-  // client's own timeout stays as a secondary guard.
+  // withHardDeadline() enforces a real one via AbortController and is the
+  // thing that should actually bound this call.
   //
-  // Set to 180s, not the 1500s (25min) briefly used while testing Vercel's
-  // extended-max-duration beta — see researchProperty.ts for the
-  // 2026-09-01 regression that caused (a single stuck call blocking the
-  // background job's retry sweep for most of the customer's wait).
-  const client = new Anthropic({ apiKey, timeout: 180_000 });
+  // Client timeout: 650s, a long-proven generous backstop (kept generous
+  // deliberately — see researchProperty.ts for the 2026-09-01 regression
+  // where matching it to the real deadline let this unreliable idle-timeout
+  // mechanism fire instead of the AbortController).
+  // Hard deadline: 240s, not the 180s briefly used the same night — see
+  // researchProperty.ts for the real submission that failed outright
+  // because of it.
+  const client = new Anthropic({ apiKey, timeout: 650_000 });
 
   let lastErr: unknown;
   for (let attempt = 0; attempt < 1; attempt++) {
     try {
-      const response = await withHardDeadline(180_000, (signal) =>
+      const response = await withHardDeadline(240_000, (signal) =>
         client.messages.create(
           {
             model: "claude-sonnet-5",

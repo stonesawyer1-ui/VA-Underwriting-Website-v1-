@@ -264,12 +264,13 @@ export async function processSubmission(job: ProcessingJob): Promise<ProcessSubm
 }
 
 /**
- * At most ~23 real minutes worst-case (5 attempts, each up to a 3-minute
- * research deadline, spaced by up to a 2-minute sweep tick to notice each
- * failure — see vercel.json and researchProperty.ts) — comfortably inside
- * the 25-minute delivery target even if every attempt fails outright,
- * while still giving a genuinely transient research outage several real
- * chances to clear before a human takes over.
+ * At most ~24 real minutes worst-case (5 attempts, each up to a 4-minute
+ * research deadline, spaced by up to a 1-minute sweep tick to notice each
+ * failure — see vercel.json and researchProperty.ts) — inside the
+ * 25-minute delivery target even if every attempt fails outright, while
+ * still giving a genuinely transient research outage several real chances
+ * to clear, each with enough real time to plausibly succeed, before a
+ * human takes over.
  */
 const MAX_ATTEMPTS = 5;
 

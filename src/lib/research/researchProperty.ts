@@ -193,26 +193,41 @@ export async function researchProperty(
   // NOT to be a reliable absolute deadline on its own — a real submission
   // ran well past 110s without it ever throwing, and the whole request was
   // eventually killed by Vercel's 300s ceiling instead, the worst outcome.
-  // withHardDeadline() below enforces a real one via AbortController; the
-  // client's own timeout stays as a secondary guard.
+  // withHardDeadline() below enforces a real one via AbortController — this
+  // is the mechanism that should actually bound how long a call runs.
   //
-  // 2026-09-01 regression (stonesawyer1@gmail.com, GRR-MTJ0ZS2V): this had
+  // 2026-09-01 regression #1 (stonesawyer1@gmail.com, GRR-MTJ0ZS2V): this had
   // been raised to 1500s (25min) during a same-night test of Vercel's
   // extended-max-duration beta and never brought back down. A single stuck
   // research call then had room to occupy nearly the entire background job's
   // retry budget by itself — the customer waited ~17 minutes for what should
   // have been one failed attempt plus one quick successful retry, because
   // the retry sweep (correctly) won't touch a job until its current attempt
-  // actually finishes. Set to 180s: generous enough for the genuinely slow
-  // multi-round searches that justified 110s, short enough that a stuck call
-  // fails fast and frees the job for the next 2-minute sweep tick (see
-  // vercel.json) well within the 25-minute total delivery target.
-  const client = new Anthropic({ apiKey, timeout: 180_000 });
+  // actually finishes.
+  //
+  // 2026-09-01 regression #2 (same night, GRR-MTJ2RJ26, the very next real
+  // submission): "fixed" #1 by dropping this to 180s — without noticing an
+  // earlier commit had deliberately tuned it to 650s specifically because
+  // real multi-round searches genuinely need that long, not just hung ones.
+  // 180s was short enough that legitimate searches started failing outright
+  // — this property's rent research failed on all 5 retry attempts, and the
+  // job fell all the way through to a manual hold-for-review instead of an
+  // automated report. Worse, the client's own `timeout` (below) had also
+  // been dropped to that same 180s — matching it to the real deadline let
+  // that unreliable idle-timeout mechanism (see the block above) become the
+  // thing that actually fired, instead of our precise AbortController.
+  //
+  // Fix: keep this client-level timeout generous (650s, its long-proven
+  // value) so it stays a rarely-firing backstop as originally intended, and
+  // let withHardDeadline below be the real, precise cutoff at a more
+  // realistic 240s — enough headroom for genuinely slow searches without
+  // reintroducing regression #1.
+  const client = new Anthropic({ apiKey, timeout: 650_000 });
 
   let lastErr: unknown;
   for (let attempt = 0; attempt < 1; attempt++) {
     try {
-      return await withHardDeadline(180_000, (signal) =>
+      return await withHardDeadline(240_000, (signal) =>
         runResearchAttempt(client, address, city, state, zip, knownFacts, cacheKey, signal),
       );
     } catch (err) {
