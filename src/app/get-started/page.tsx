@@ -4,8 +4,9 @@ import { CTAButton } from "@/components/CTAButton";
 import { Container } from "@/components/Container";
 import { UnderwritingForm } from "@/components/underwriting/UnderwritingForm";
 import { getStripeClient } from "@/lib/stripe";
-import { createEntitlementToken } from "@/lib/entitlementToken";
-import { getPricingTier } from "@/lib/site";
+import { createEntitlementToken, signEntitlement } from "@/lib/entitlementToken";
+import { getPricingTier, siteConfig } from "@/lib/site";
+import { sendCheckoutConfirmationEmail } from "@/lib/email";
 
 export const metadata: Metadata = {
   title: "Get Started",
@@ -47,6 +48,30 @@ export default async function GetStartedPage({
         body="The intake form unlocks after you pay for a Recon or Sentry review — that keeps this to one flat fee, no accounts, no subscriptions."
       />
     );
+  }
+
+  // Owner-only free testing shortcut: visiting /get-started?session_id=<this
+  // code> unlocks the intake form without touching Stripe at all, so the
+  // owner can run real end-to-end test submissions (real research, real
+  // confidence gate, real emails) whenever they want without paying for a
+  // plan each time. Only matches if OWNER_TEST_CODE is actually configured
+  // (never accidentally matches an empty/unset value against a real Stripe
+  // session_id, which never equals ""). stripeSessionId "demo" is the same
+  // sentinel chargeAllowanceForJob already recognizes to skip the real
+  // Stripe metadata update — the rest of the pipeline runs completely
+  // normally. Allowance is set generously high (999) rather than tied to a
+  // real plan's limit, since the point is unlimited repeat testing without
+  // needing to revisit this URL for a fresh allowance.
+  const ownerTestCode = process.env.OWNER_TEST_CODE;
+  if (ownerTestCode && sessionId === ownerTestCode) {
+    const token = signEntitlement({
+      stripeSessionId: "demo",
+      tierId: "sentry",
+      allowance: 999,
+      used: 0,
+      customerEmail: null,
+    });
+    return <GetStartedForm token={token} tierId="sentry" allowance={999} used={0} />;
   }
 
   const stripe = getStripeClient();
@@ -118,6 +143,38 @@ export default async function GetStartedPage({
         body={`This order already used all ${tier.propertyAllowance} property review${tier.propertyAllowance === 1 ? "" : "s"} on the ${tier.name} plan. Choose a new plan to submit another property.`}
       />
     );
+  }
+
+  // Send the customer their personal return link exactly once per checkout
+  // — this is the only durable copy of it that ever leaves the server (see
+  // sendCheckoutConfirmationEmail's comment). Without it, closing this tab
+  // before finishing every property on a multi-property plan left a
+  // customer with no way back at all (caught 2026-09-02). Guarded by the
+  // session's own metadata, the same webhook-free durable pattern already
+  // used for the `used` counter, so an ordinary page refresh mid-form-fill
+  // never re-sends it.
+  if (!checkoutSession.metadata?.confirmationEmailSent) {
+    const customerEmail = checkoutSession.customer_details?.email;
+    if (customerEmail) {
+      try {
+        await sendCheckoutConfirmationEmail({
+          customerEmail,
+          customerName: checkoutSession.customer_details?.name ?? null,
+          tierName: tier.name,
+          allowance: tier.propertyAllowance,
+          returnUrl: `${siteConfig.url}/get-started?session_id=${sessionId}`,
+        });
+      } catch (err) {
+        console.error("[get-started] Failed to send checkout confirmation email", err);
+      }
+    }
+    try {
+      await stripe.checkout.sessions.update(sessionId, {
+        metadata: { ...checkoutSession.metadata, confirmationEmailSent: "true" },
+      });
+    } catch (err) {
+      console.error("[get-started] Failed to mark confirmationEmailSent on Stripe session", err);
+    }
   }
 
   return <GetStartedForm token={token} tierId={tier.id} allowance={tier.propertyAllowance} used={used} />;

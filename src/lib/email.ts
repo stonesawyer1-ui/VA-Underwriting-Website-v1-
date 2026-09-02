@@ -104,6 +104,68 @@ export async function sendUnderwritingInquiryEmail(
   });
 }
 
+/**
+ * Sent once, right after a paid checkout is first confirmed on /get-started
+ * — this is the ONLY durable copy of the customer's personal return link
+ * (/get-started?session_id=<their real Stripe session>) that ever leaves
+ * the server. Before this existed, that link only ever appeared as Stripe's
+ * one-time checkout redirect and as in-memory React state on the intake
+ * form (UnderwritingForm.tsx's `token` state) — closing the tab, refreshing,
+ * or a crash lost it permanently, with no way back to submit any remaining
+ * property reviews on a multi-property plan short of the customer emailing
+ * the owner to manually look up their Stripe session (caught 2026-09-02,
+ * a real customer-facing gap, not yet a reported incident).
+ *
+ * Idempotency: /get-started renders on every page load with a valid paid
+ * session_id, including ordinary refreshes while filling out a long form —
+ * this must not re-send on every one of those. The caller checks/sets a
+ * `confirmationEmailSent` flag in the Stripe session's own metadata (the
+ * same durable, webhook-free pattern this codebase already uses for the
+ * `used` counter) before calling this, so it only ever fires once per
+ * checkout.
+ */
+export async function sendCheckoutConfirmationEmail(params: {
+  customerEmail: string;
+  customerName: string | null;
+  tierName: string;
+  allowance: number;
+  returnUrl: string;
+}) {
+  const client = getClient();
+  if (!client) return;
+
+  const html = `
+    <div style="font-family:sans-serif;max-width:560px;margin:0 auto;">
+      <h2 style="color:#0a1f44;">You're all set — ${siteConfig.name}</h2>
+      <p style="color:#222;line-height:1.6;">
+        ${params.customerName ? `Hi ${params.customerName},` : "Hi,"}<br/><br/>
+        Thanks for your order — you're on the <strong>${params.tierName}</strong> plan with
+        ${params.allowance} propert${params.allowance === 1 ? "y" : "ies"} to submit.
+      </p>
+      <p style="color:#222;line-height:1.6;">
+        <strong>Bookmark this email.</strong> The link below is the only way back to submit
+        your remaining property review${params.allowance === 1 ? "" : "s"} if you close this
+        tab, refresh partway through, or come back another day — there's no login or account,
+        so this link is it.
+      </p>
+      <p style="text-align:center;margin:24px 0;">
+        <a href="${params.returnUrl}" style="display:inline-block;background:#0a1f44;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;">
+          Continue to your submissions
+        </a>
+      </p>
+      <p style="color:#888;font-size:12px;word-break:break-all;">${params.returnUrl}</p>
+    </div>
+  `;
+
+  await sendOrThrow(client, {
+    from: resolveFromAddress(),
+    to: params.customerEmail,
+    replyTo: siteConfig.notifyEmail,
+    subject: `Your ${siteConfig.name} link — save this to submit your remaining properties`,
+    html,
+  });
+}
+
 export async function sendUnderwritingReportToCustomer(params: {
   customerEmail: string;
   customerName: string;
