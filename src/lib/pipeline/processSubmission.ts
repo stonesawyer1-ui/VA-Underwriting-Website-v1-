@@ -315,6 +315,28 @@ export async function processSubmission(job: ProcessingJob): Promise<ProcessSubm
   }
 
   await chargeAllowanceForJob(job);
+  await buildAndSendReport({ formData, referenceId, isCondo, research, rentResearch, narrative, resolvedTax, insurance, rent });
+  return "completed";
+}
+
+/**
+ * The "gate passed, produce the real report" tail — pulled out of
+ * processSubmission() so forceCompleteHeldJob() (below) can reuse the exact
+ * same report-building/sending code for a manual admin override, instead of
+ * a second, drift-prone copy of ~90 lines of report assembly.
+ */
+async function buildAndSendReport(args: {
+  formData: ProcessingJob["formData"];
+  referenceId: string;
+  isCondo: boolean;
+  research: Awaited<ReturnType<typeof researchProperty>>;
+  rentResearch: Awaited<ReturnType<typeof researchRentEstimate>>;
+  narrative: Awaited<ReturnType<typeof researchMemoNarrative>>;
+  resolvedTax: ReturnType<typeof resolveTaxInputs>;
+  insurance: ReturnType<typeof resolveYearlyInsurance>;
+  rent: ReturnType<typeof resolveMonthlyRent>;
+}): Promise<void> {
+  const { formData, referenceId, isCondo, research, rentResearch, narrative, resolvedTax, insurance, rent } = args;
 
   const engineInputs = buildEngineInputs(formData, research, rentResearch, resolvedTax);
   const outputs = await computeUnderwriting(engineInputs);
@@ -364,10 +386,15 @@ export async function processSubmission(job: ProcessingJob): Promise<ProcessSubm
     rentUsed: engineInputs.property.expectedMonthlyRent,
     rentConfidenceLabel:
       rent.source === "research"
-        ? `${rentResearchResult?.confidence ?? "unknown"} confidence (research)${rentResearchResult?.confidenceNote ? ` — ${rentResearchResult.confidenceNote}` : ""}`
+        ? `${rentResearchResult?.confidence ?? "unknown"} confidence (area market research)${
+            rent.comparison.buyerEstimate ? " — higher confidence than the buyer's own estimate, shown below" : ""
+          }${rentResearchResult?.confidenceNote ? ` — ${rentResearchResult.confidenceNote}` : ""}`
         : rent.source === "regional_average"
           ? "regional average estimate — not live comps for this address"
-          : `${formData.rentEstimate.confidence} confidence (buyer estimate)`,
+          : `${formData.rentEstimate.confidence} confidence (buyer estimate)${
+              rent.comparison.researchEstimate ? " — at least as confident as area market research, shown below" : ""
+            }`,
+    rentComparison: rent.comparison,
     rentAfterVacancy: numberOf("rentAfterVacancy"),
     moneyLeftOverMonthly: numberOf("moneyLeftOverMonthly"),
     moneyLeftOverYearly: numberOf("moneyLeftOverYearly"),
@@ -425,8 +452,99 @@ export async function processSubmission(job: ProcessingJob): Promise<ProcessSubm
     underwritingPdf: Buffer.from(underwritingPdf),
     workbookXlsx,
   });
+}
 
-  return "completed";
+/**
+ * Manual admin override for a job that already finalized `held_for_review`
+ * *specifically* because the BUYER's own self-rated rent confidence was
+ * below the gate's bar ("moderate" or "low") — not because research itself
+ * found a genuine data gap. Broader research can't raise a buyer's own
+ * confidence label (see evaluateConfidenceGate's needsRentRefinement
+ * comment), so the confidence-seeking retry loop always burns its full
+ * MAX_CONFIDENCE_ROUNDS on exactly this case before landing on
+ * held_for_review, even though nothing about round 2 or 3 could ever have
+ * come out differently from round 1 — a real design gap (first seen
+ * 2026-09-02, GRR-MTKIHYO2) worth fixing properly, but this function exists
+ * to get an already-held, already-good-data customer their report without
+ * waiting on that fix.
+ *
+ * Deliberately narrow: recomputes the confidence gate from the job's own
+ * stored data, and refuses to send unless EVERY reason the gate gives is
+ * this exact buyer-confidence case. If research itself ever comes back with
+ * a genuine data gap (insurance default estimate, no rent information at
+ * all, or research-side low-confidence comps), this refuses rather than
+ * shipping an unvetted report — that kind of hold still needs a real human
+ * look, not an override.
+ *
+ * Never charges the allowance — chargeAllowanceForJob already ran exactly
+ * once, at the moment this job first finalized held_for_review (see the
+ * exhausted-gate branch above). Calling it again here would double-charge.
+ */
+export async function forceCompleteHeldJob(
+  referenceId: string,
+): Promise<{ status: "sent" } | { status: "refused"; reason: string }> {
+  const { getJob } = await import("@/lib/jobStore");
+  const job = await getJob(referenceId);
+  if (!job) {
+    return { status: "refused", reason: "No stored job found for this referenceId." };
+  }
+  if (job.status !== "held_for_review") {
+    return {
+      status: "refused",
+      reason: `Job status is "${job.status}", not "held_for_review" — this tool only overrides an existing hold.`,
+    };
+  }
+
+  const { formData } = job;
+  const isCondo = formData.property.propertyType === "condo";
+
+  const [research, rentResearch, narrative] = await Promise.all([
+    researchProperty(formData.property.address, formData.property.city, formData.property.state, formData.property.zip, {
+      sqft: typeof formData.property.sqft === "number" ? formData.property.sqft : undefined,
+      beds: typeof formData.property.beds === "number" ? formData.property.beds : undefined,
+      baths: typeof formData.property.baths === "number" ? formData.property.baths : undefined,
+      yearBuilt: typeof formData.property.yearBuilt === "number" ? formData.property.yearBuilt : undefined,
+    }),
+    researchRentEstimate(formData.property.address, formData.property.city, formData.property.state, formData.property.zip, {
+      sqft: typeof formData.property.sqft === "number" ? formData.property.sqft : undefined,
+      beds: typeof formData.property.beds === "number" ? formData.property.beds : undefined,
+      baths: typeof formData.property.baths === "number" ? formData.property.baths : undefined,
+      units: formData.property.units.some((u) => u.beds !== "" || u.baths !== "")
+        ? formData.property.units.map((u) => ({
+            beds: typeof u.beds === "number" ? u.beds : undefined,
+            baths: typeof u.baths === "number" ? u.baths : undefined,
+          }))
+        : undefined,
+    }),
+    researchMemoNarrative({
+      address: formData.property.address,
+      city: formData.property.city,
+      state: formData.property.state,
+      zip: formData.property.zip,
+      isCondo,
+    }),
+  ]);
+
+  const resolvedTax = resolveTaxInputs(formData, research);
+  const insurance = resolveYearlyInsurance(formData, research);
+  const rent = resolveMonthlyRent(formData, rentResearch);
+  const gate = evaluateConfidenceGate(research, rentResearch, formData.rentEstimate.confidence, insurance.source, rent.source);
+
+  const isBuyerConfidenceReason = (reason: string): boolean => /confidence from the buyer/.test(reason);
+  if (!gate.passed && !gate.reasons.every(isBuyerConfidenceReason)) {
+    return {
+      status: "refused",
+      reason: `Refusing — at least one gate reason is a genuine data gap, not just the buyer's own confidence rating: ${gate.reasons.join(" | ")}`,
+    };
+  }
+
+  await buildAndSendReport({ formData, referenceId, isCondo, research, rentResearch, narrative, resolvedTax, insurance, rent });
+
+  job.status = "completed";
+  await saveJob(job);
+  await removePendingJob(referenceId);
+
+  return { status: "sent" };
 }
 
 /**

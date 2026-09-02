@@ -63,6 +63,10 @@ export type UnderwritingReportData = {
   runningCostsAmount: number;
   rentUsed: number;
   rentConfidenceLabel: string;
+  rentComparison: {
+    buyerEstimate: { monthly: number; confidence: "low" | "moderate" | "high" } | null;
+    researchEstimate: { monthly: number; confidence: "low" | "moderate" | "high" } | null;
+  } | null;
   rentAfterVacancy: number;
   moneyLeftOverMonthly: number;
   moneyLeftOverYearly: number;
@@ -226,6 +230,14 @@ export function UnderwritingReportDocument(data: UnderwritingReportData) {
             ],
           ]}
         />
+        {data.rentComparison && data.rentComparison.buyerEstimate && data.rentComparison.researchEstimate && (
+          <Table
+            rows={[
+              ["Buyer-supplied rent estimate", `${formatCurrency(data.rentComparison.buyerEstimate.monthly)}/mo (${data.rentComparison.buyerEstimate.confidence} confidence)`],
+              ["Area market research rent", `${formatCurrency(data.rentComparison.researchEstimate.monthly)}/mo (${data.rentComparison.researchEstimate.confidence} confidence)`],
+            ]}
+          />
+        )}
         <Text style={styles.p}>
           Rent used in the underwriting: {formatCurrency(data.rentUsed)}/mo — {data.rentConfidenceLabel}. Rent after
           vacancy allowance: {formatCurrency(data.rentAfterVacancy)}/mo. Money left over per month:{" "}

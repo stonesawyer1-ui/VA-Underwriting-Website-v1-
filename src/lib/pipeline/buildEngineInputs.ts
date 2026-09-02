@@ -162,29 +162,68 @@ export function resolveYearlyInsurance(data: UnderwritingFormData, research: Res
 
 export type RentSource = "customer" | "research" | "regional_average" | "unavailable";
 
+type RentConfidence = "low" | "moderate" | "high";
+const CONFIDENCE_RANK: Record<RentConfidence, number> = { low: 1, moderate: 2, high: 3 };
+
+/** Both figures, shown side by side in the report regardless of which one the underwriting math actually uses — so the buyer can see their own number next to what the area's active listings support. */
+export type RentComparison = {
+  buyerEstimate: { monthly: number; confidence: RentConfidence } | null;
+  researchEstimate: { monthly: number; confidence: RentConfidence; note: string } | null;
+};
+
 /**
- * The buyer's own rent estimate wins if they gave one. Otherwise prefer
- * live research comps. Without either, fall back to a regional rent-to-price
- * estimate tied to this property's purchase price, same "never block on a
- * missing number" rule as insurance.
+ * When the buyer supplied their own estimate AND research found a usable
+ * number, use whichever one is actually more confident rather than always
+ * defaulting to the buyer's figure — a buyer's own guess rated "moderate"
+ * shouldn't automatically outrank a "high"-confidence set of active area
+ * comps, and vice versa. Ties keep the buyer's number (the original
+ * default), since it reflects real knowledge (a signed lease, current
+ * tenant, etc.) that a tied confidence label doesn't distinguish from area
+ * research on its own.
+ *
+ * With only one of the two available, that one is used as before. Without
+ * either, fall back to a regional rent-to-price estimate tied to this
+ * property's purchase price, same "never block on a missing number" rule as
+ * insurance. `comparison` carries both raw figures (whichever exist) purely
+ * for report display — added 2026-09-02 (GRR-MTKIHYO2) so a buyer can see
+ * their own number next to the area's, not just whichever one was used.
  */
 export function resolveMonthlyRent(
   data: UnderwritingFormData,
   rentResearch: RentResearchOutcome,
-): { monthly: number; source: RentSource; note?: string } {
-  if (typeof data.rentEstimate.monthlyRent === "number" && data.rentEstimate.monthlyRent > 0) {
-    return { monthly: data.rentEstimate.monthlyRent, source: "customer" };
+): { monthly: number; source: RentSource; note?: string; comparison: RentComparison } {
+  const buyerMonthly = typeof data.rentEstimate.monthlyRent === "number" && data.rentEstimate.monthlyRent > 0 ? data.rentEstimate.monthlyRent : null;
+  const buyerConfidence = data.rentEstimate.confidence;
+  const researchResult = rentResearch.status === "ok" ? rentResearch.result : null;
+  const researchMonthly = researchResult?.base ?? null;
+  const researchConfidence = researchResult?.confidence ?? null;
+
+  const comparison: RentComparison = {
+    buyerEstimate: buyerMonthly !== null ? { monthly: buyerMonthly, confidence: buyerConfidence } : null,
+    researchEstimate:
+      researchMonthly !== null && researchConfidence
+        ? { monthly: researchMonthly, confidence: researchConfidence, note: researchResult?.confidenceNote ?? "" }
+        : null,
+  };
+
+  if (buyerMonthly !== null && researchMonthly !== null && researchConfidence) {
+    if (CONFIDENCE_RANK[researchConfidence] > CONFIDENCE_RANK[buyerConfidence]) {
+      return { monthly: researchMonthly, source: "research", comparison };
+    }
+    return { monthly: buyerMonthly, source: "customer", comparison };
   }
-  const researchRent = rentResearch.status === "ok" ? rentResearch.result.base : null;
-  if (researchRent !== null) {
-    return { monthly: researchRent, source: "research" };
+  if (buyerMonthly !== null) {
+    return { monthly: buyerMonthly, source: "customer", comparison };
+  }
+  if (researchMonthly !== null) {
+    return { monthly: researchMonthly, source: "research", comparison };
   }
   const purchasePrice = typeof data.property.purchasePrice === "number" ? data.property.purchasePrice : 0;
   const regional = regionalRentEstimate(data.property.state, purchasePrice);
   if (regional) {
-    return { monthly: regional.monthly, source: "regional_average", note: regional.note };
+    return { monthly: regional.monthly, source: "regional_average", note: regional.note, comparison };
   }
-  return { monthly: 0, source: "unavailable" };
+  return { monthly: 0, source: "unavailable", comparison };
 }
 
 export function buildEngineInputs(
