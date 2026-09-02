@@ -335,8 +335,10 @@ async function buildAndSendReport(args: {
   resolvedTax: ReturnType<typeof resolveTaxInputs>;
   insurance: ReturnType<typeof resolveYearlyInsurance>;
   rent: ReturnType<typeof resolveMonthlyRent>;
-}): Promise<void> {
-  const { formData, referenceId, isCondo, research, rentResearch, narrative, resolvedTax, insurance, rent } = args;
+  /** Skip the actual customer email — used by regenerateReportFiles() to produce an owner-facing copy of an already-sent report without re-sending it. */
+  skipSend?: boolean;
+}): Promise<{ reportPdf: Buffer; underwritingPdf: Buffer; workbookXlsx: Buffer }> {
+  const { formData, referenceId, isCondo, research, rentResearch, narrative, resolvedTax, insurance, rent, skipSend } = args;
 
   const engineInputs = buildEngineInputs(formData, research, rentResearch, resolvedTax);
   const outputs = await computeUnderwriting(engineInputs);
@@ -438,20 +440,26 @@ async function buildAndSendReport(args: {
     }),
   ]);
 
-  console.log("[processSubmission] Research audit log", {
-    referenceId,
-    research: research.status === "ok" ? research.result.rawResponse : research,
-    rentResearch,
-  });
+  const files = { reportPdf: Buffer.from(reportPdf), underwritingPdf: Buffer.from(underwritingPdf), workbookXlsx: Buffer.from(workbookXlsx) };
 
-  await sendUnderwritingReportToCustomer({
-    customerEmail: formData.customer.email,
-    customerName: formData.customer.name,
-    referenceId,
-    reportPdf: Buffer.from(reportPdf),
-    underwritingPdf: Buffer.from(underwritingPdf),
-    workbookXlsx,
-  });
+  if (!skipSend) {
+    console.log("[processSubmission] Research audit log", {
+      referenceId,
+      research: research.status === "ok" ? research.result.rawResponse : research,
+      rentResearch,
+    });
+
+    await sendUnderwritingReportToCustomer({
+      customerEmail: formData.customer.email,
+      customerName: formData.customer.name,
+      referenceId,
+      reportPdf: files.reportPdf,
+      underwritingPdf: files.underwritingPdf,
+      workbookXlsx: files.workbookXlsx,
+    });
+  }
+
+  return files;
 }
 
 /**
@@ -480,22 +488,7 @@ async function buildAndSendReport(args: {
  * once, at the moment this job first finalized held_for_review (see the
  * exhausted-gate branch above). Calling it again here would double-charge.
  */
-export async function forceCompleteHeldJob(
-  referenceId: string,
-): Promise<{ status: "sent" } | { status: "refused"; reason: string }> {
-  const { getJob } = await import("@/lib/jobStore");
-  const job = await getJob(referenceId);
-  if (!job) {
-    return { status: "refused", reason: "No stored job found for this referenceId." };
-  }
-  if (job.status !== "held_for_review") {
-    return {
-      status: "refused",
-      reason: `Job status is "${job.status}", not "held_for_review" — this tool only overrides an existing hold.`,
-    };
-  }
-
-  const { formData } = job;
+async function recomputeResearchForJob(formData: ProcessingJob["formData"]) {
   const isCondo = formData.property.propertyType === "condo";
 
   const [research, rentResearch, narrative] = await Promise.all([
@@ -528,6 +521,26 @@ export async function forceCompleteHeldJob(
   const resolvedTax = resolveTaxInputs(formData, research);
   const insurance = resolveYearlyInsurance(formData, research);
   const rent = resolveMonthlyRent(formData, rentResearch);
+  return { isCondo, research, rentResearch, narrative, resolvedTax, insurance, rent };
+}
+
+export async function forceCompleteHeldJob(
+  referenceId: string,
+): Promise<{ status: "sent" } | { status: "refused"; reason: string }> {
+  const { getJob } = await import("@/lib/jobStore");
+  const job = await getJob(referenceId);
+  if (!job) {
+    return { status: "refused", reason: "No stored job found for this referenceId." };
+  }
+  if (job.status !== "held_for_review") {
+    return {
+      status: "refused",
+      reason: `Job status is "${job.status}", not "held_for_review" — this tool only overrides an existing hold.`,
+    };
+  }
+
+  const { formData } = job;
+  const { isCondo, research, rentResearch, narrative, resolvedTax, insurance, rent } = await recomputeResearchForJob(formData);
   const gate = evaluateConfidenceGate(research, rentResearch, formData.rentEstimate.confidence, insurance.source, rent.source);
 
   const isBuyerConfidenceReason = (reason: string): boolean => /confidence from the buyer/.test(reason);
@@ -545,6 +558,29 @@ export async function forceCompleteHeldJob(
   await removePendingJob(referenceId);
 
   return { status: "sent" };
+}
+
+/**
+ * Owner-facing debug tool: rebuilds the exact same three report files for
+ * any stored job (any status — unlike forceCompleteHeldJob, this never sends
+ * anything to the customer and never touches job status) so the owner can
+ * see what a report actually looks like. Research is re-run, but every call
+ * involved (property/tax/insurance, rent comps, market narrative) is cached
+ * for 30 days keyed on address — so for a job whose research already
+ * succeeded, this returns the identical data that was (or will be) emailed,
+ * not a fresh live search that could come back different.
+ */
+export async function regenerateReportFiles(
+  referenceId: string,
+): Promise<{ status: "ok"; files: { reportPdf: Buffer; underwritingPdf: Buffer; workbookXlsx: Buffer } } | { status: "not_found" }> {
+  const { getJob } = await import("@/lib/jobStore");
+  const job = await getJob(referenceId);
+  if (!job) return { status: "not_found" };
+
+  const { formData } = job;
+  const { isCondo, research, rentResearch, narrative, resolvedTax, insurance, rent } = await recomputeResearchForJob(formData);
+  const files = await buildAndSendReport({ formData, referenceId, isCondo, research, rentResearch, narrative, resolvedTax, insurance, rent, skipSend: true });
+  return { status: "ok", files };
 }
 
 /**
