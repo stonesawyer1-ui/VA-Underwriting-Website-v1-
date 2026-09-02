@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { extractJson } from "./jsonExtract";
 import { withHardDeadline } from "./hardDeadline";
 import { getCachedResearch, setCachedResearch } from "./researchCache";
+import { sanitizeReportText } from "./sanitizeReportText";
 import { RESEARCH_HARD_DEADLINE_MS, ANTHROPIC_CLIENT_TIMEOUT_MS, RESEARCH_CACHE_TTL_MS, RESEARCH_CACHE_TTL_SECONDS } from "@/lib/pipeline/config";
 
 export type CondoApproval = {
@@ -56,6 +57,13 @@ those figures.
 6. A single overall "market_risk_rating" (LOW / MEDIUM / MEDIUM-HIGH / HIGH) reflecting how much
    uncertainty or risk the market-trend picture itself adds - not the tax or cash-flow risk, which
    are handled elsewhere.
+
+Write every note, bullet, and factor in professional, plain-language business prose for a
+homebuyer client, as a real-estate analyst would — describe only the property, market, and
+financing-eligibility findings. Never mention web searches, tools, retries, technical
+limitations, or anything about how you performed the research. If something genuinely could not
+be confirmed, state that as a market or eligibility finding (e.g. "condo approval status could
+not be confirmed from an authoritative source"), not as an explanation of a technical process.
 
 Valid JSON only: never use a literal double-quote character inside a string value (e.g. when quoting a phrase from a source) - use single quotes ' ' instead, since an embedded " breaks the surrounding string.
 
@@ -187,7 +195,11 @@ export async function researchMemoNarrative(params: {
             parsed.condo_approval.status === "approved" || parsed.condo_approval.status === "not_approved"
               ? parsed.condo_approval.status
               : "unconfirmed",
-          note: parsed.condo_approval.note ?? "Approval status could not be confirmed from an authoritative source.",
+          note: sanitizeReportText(
+            parsed.condo_approval.note,
+            "Approval status could not be confirmed from an authoritative source.",
+            "narrative.condoApproval",
+          ),
           source: parsed.condo_approval.source ?? null,
         }
       : null;
@@ -200,13 +212,18 @@ export async function researchMemoNarrative(params: {
     const result: MemoNarrative = {
       condoApproval,
       marketTrends: {
-        note: parsed.market_trends?.note ?? "Market trend data was not conclusively found for this address.",
+        note: sanitizeReportText(parsed.market_trends?.note, "Market trend data was not conclusively found for this address.", "narrative.marketTrends.note"),
         sourcesConflict: Boolean(parsed.market_trends?.sources_conflict),
         bullets: (parsed.market_trends?.bullets ?? [])
           .filter((b) => typeof b.note === "string")
-          .map((b) => ({ note: b.note as string, source: b.source ?? null })),
+          .map((b) => ({
+            note: sanitizeReportText(b.note, "Additional market detail was not conclusively found for this address.", "narrative.marketTrends.bullet"),
+            source: b.source ?? null,
+          })),
       },
-      positiveFactors: (parsed.positive_factors ?? []).filter((f): f is string => typeof f === "string"),
+      positiveFactors: (parsed.positive_factors ?? [])
+        .filter((f): f is string => typeof f === "string")
+        .map((f) => sanitizeReportText(f, "A specific positive factor was not conclusively identified for this address.", "narrative.positiveFactor")),
       marketRiskRating,
     };
 

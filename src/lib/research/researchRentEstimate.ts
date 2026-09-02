@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { extractJson } from "./jsonExtract";
 import { withHardDeadline } from "./hardDeadline";
 import { getCachedResearch, setCachedResearch } from "./researchCache";
+import { sanitizeReportText } from "./sanitizeReportText";
 import { RESEARCH_HARD_DEADLINE_MS, ANTHROPIC_CLIENT_TIMEOUT_MS, RESEARCH_CACHE_TTL_MS, RESEARCH_CACHE_TTL_SECONDS } from "@/lib/pipeline/config";
 
 export type RentComp = {
@@ -89,6 +90,13 @@ Rate your confidence as exactly one of "low", "moderate", or "high":
   perfect match.
 
 Put your reasoning, any adjustments you made, and caveats in "confidence_note" as plain text.
+
+Write "confidence_note" (and every other text field) in professional, plain-language business
+prose for a homebuyer client, as a real-estate analyst would — describe only the property, the
+comps you found, and market conditions. Never mention web searches, tools, retries, technical
+limitations, or anything about how you performed the research. If you genuinely could not find
+comps, state that as a market-data finding (e.g. "no active comparable listings were identified
+within the search radius"), not as an explanation of a technical process.
 
 Valid JSON only: never use a literal double-quote character inside a string value (e.g. when quoting a phrase from a source) - use single quotes ' ' instead, since an embedded " breaks the surrounding string.
 
@@ -218,7 +226,7 @@ export async function researchRentEstimate(
       confidence: (["low", "moderate", "high"] as const).includes(parsed.confidence as "low" | "moderate" | "high")
         ? (parsed.confidence as "low" | "moderate" | "high")
         : "low",
-      confidenceNote: parsed.confidence_note ?? "No confidence reasoning returned.",
+      confidenceNote: sanitizeReportText(parsed.confidence_note, "No detailed comp reasoning was returned for this search.", "rent.confidenceNote"),
       comps: parsed.comps ?? [],
       researchedAt: new Date().toISOString(),
     };

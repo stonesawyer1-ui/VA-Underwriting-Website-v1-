@@ -3,6 +3,7 @@ import { extractJson } from "./jsonExtract";
 import { lookupTaxRate, taxRateEntryToResearchOutcome } from "./taxRateDatabase";
 import { withHardDeadline } from "./hardDeadline";
 import { getCachedResearch, setCachedResearch } from "./researchCache";
+import { sanitizeReportText } from "./sanitizeReportText";
 import { PROPERTY_RESEARCH_HARD_DEADLINE_MS, ANTHROPIC_CLIENT_TIMEOUT_MS, RESEARCH_CACHE_TTL_MS, RESEARCH_CACHE_TTL_SECONDS } from "@/lib/pipeline/config";
 
 export type FieldConfidence = "Confirmed" | "Estimated";
@@ -94,6 +95,13 @@ You will be given an address and state. Find, using web search:${refinementNote}
 For every value you return, include a confidence label (Confirmed / Estimated) and the source
 URL. If you cannot find real comps or a real tax rate, say so explicitly rather than guessing -
 return null with an explanation, don't fabricate a plausible-sounding number.
+
+Write every note in professional, plain-language business prose for a homebuyer client, as a
+real-estate/tax analyst would — describe only the property, tax rules, and insurance market
+findings. Never mention web searches, tools, retries, technical limitations, or anything about
+how you performed the research. If a value genuinely could not be confirmed, state that as a
+data finding (e.g. "the current rate could not be confirmed from an official source"), not as an
+explanation of a technical process.
 
 Valid JSON only: never use a literal double-quote character inside a string value (e.g. when quoting a phrase from a source) - use single quotes ' ' instead, since an embedded " breaks the surrounding string.
 
@@ -317,12 +325,19 @@ async function runResearchAttempt(
     taxFields: normalizeTaxFields(parsed.tax_fields as Record<string, unknown>),
     taxInsights: (parsed.tax_insights ?? [])
       .filter((i) => typeof i.note === "string")
-      .map((i) => ({ note: i.note as string, source: i.source ?? null })),
+      .map((i) => ({
+        note: sanitizeReportText(i.note, "An additional state- or county-specific tax rule may apply — consult the county assessor or a tax professional.", "property.taxInsight"),
+        source: i.source ?? null,
+      })),
     insuranceEstimate: {
       annualPremium: parsed.insurance_estimate?.annual_premium ?? null,
       confidence: parsed.insurance_estimate?.confidence === "Confirmed" ? "Confirmed" : "Estimated",
       source: parsed.insurance_estimate?.source ?? null,
-      note: parsed.insurance_estimate?.note ?? "Market-rate estimate, not a bindable quote — confirm with a real insurer before closing.",
+      note: sanitizeReportText(
+        parsed.insurance_estimate?.note,
+        "Market-rate estimate, not a bindable quote — confirm with a real insurer before closing.",
+        "property.insuranceNote",
+      ),
     },
     propertyFacts: {
       sqft: parsed.property_facts?.sqft ?? null,
