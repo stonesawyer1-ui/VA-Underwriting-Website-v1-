@@ -1,23 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getJob, listPendingJobIds, saveJob, removePendingJob, isJobStoreConfigured, type ProcessingJob } from "@/lib/jobStore";
 import { runJobAttempt } from "@/lib/pipeline/processSubmission";
-import { shouldRetryJob } from "@/lib/pipeline/retryPolicy";
+import { shouldRetryJob, isBackoffElapsed } from "@/lib/pipeline/retryPolicy";
 
 // Matches the intake route's maxDuration (see its comment) so a background
-// retry gets the same full time budget as the initial attempt.
+// retry gets the same full time budget as the initial attempt. Must stay
+// equal to ROUTE_MAX_DURATION_SECONDS in pipeline/config.ts — see that
+// file's comment for why it can't be imported directly here.
 export const maxDuration = 600;
 
 /**
- * Called every 1 minute by Vercel Cron (see vercel.json) — tightened twice
- * on 2026-09-01: 5min -> 2min alongside dropping each research call's hard
- * deadline from 25min to 3min (GRR-MTJ0ZS2V), then that 3min deadline
- * turned out too short for legitimate multi-round searches and reliably
- * failed a real submission outright (GRR-MTJ2RJ26, see researchProperty.ts)
- * — the deadline went back up to 4min, so the cron interval came down to
- * 1min to compensate and keep the worst case inside 25 minutes: five
- * attempts (see MAX_ATTEMPTS in processSubmission.ts) at up to 4min each,
- * spaced by up to 1min of detection latency, tops out around 24 real
- * minutes even if every attempt fails outright.
+ * Called every 1 minute by Vercel Cron (see vercel.json — CRON_SWEEP_INTERVAL_MS
+ * in pipeline/config.ts documents that same cadence for the retry-timing
+ * math). Every tick, checks each pending job for two independent gates
+ * before touching it:
+ *   1. shouldRetryJob — is the previous attempt actually finished (not just
+ *      old enough to guess it might be)?
+ *   2. isBackoffElapsed — has this job's exponential backoff window (Path A
+ *      confidence rounds and Path B infra-fault attempts use separate,
+ *      independently-configured backoff curves — see retryPolicy.ts and
+ *      config.ts) elapsed since its last attempt?
+ * Only a job that clears both gets retried this tick — this is what
+ * replaced the old fixed "retry on literally the very next tick" behavior,
+ * so a sustained outage doesn't get hammered at a flat 1-minute cadence
+ * with no back-pressure. See MAX_INFRA_ATTEMPTS / MAX_CONFIDENCE_ROUNDS in
+ * config.ts for how long each path's retry budget actually runs in real
+ * time.
  *
  * Vercel Cron invokes its path with a GET request — a POST-only handler
  * here 405s on every single tick (caught 2026-08-31 in runtime logs). GET
@@ -71,10 +79,21 @@ async function handleSweep(request: NextRequest) {
         return;
       }
 
+      if (!isBackoffElapsed(job, now)) {
+        // The job finished its last attempt but hasn't waited out its
+        // exponential backoff window yet (see retryPolicy.ts) — leave it for
+        // a later tick instead of hammering the same failure every minute.
+        return;
+      }
+
       retried++;
+      // Path A (confidence) retries don't consume the Path B attempts
+      // budget, and vice versa — only the counter matching this job's
+      // pendingRetryKind actually increments here.
+      const isConfidenceRetry = job.pendingRetryKind === "confidence";
       const updated: ProcessingJob = {
         ...job,
-        attempts: job.attempts + 1,
+        attempts: isConfidenceRetry ? job.attempts : job.attempts + 1,
         lastAttemptAt: new Date().toISOString(),
         attemptInProgress: true,
       };

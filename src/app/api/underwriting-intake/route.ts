@@ -21,12 +21,18 @@ import { runJobAttempt } from "@/lib/pipeline/processSubmission";
 //
 // Vercel's "extended max duration" beta (confirmed genuinely active on this
 // account 2026-09-01 via a live test) allows up to 1800s/30min here, but
-// each research call's own hard deadline is now only 180s (see
-// researchProperty.ts) and the three run in parallel — 600s leaves ample
-// room for research + compute + PDF/XLSX generation + email on even a slow
-// attempt, without holding the door open for a single hung call to eat
-// most of a 25-minute customer-facing delivery target the way 1800s did on
-// 2026-09-01 (stonesawyer1@gmail.com, GRR-MTJ0ZS2V).
+// each research call's own hard deadline is now only 240s (see
+// RESEARCH_HARD_DEADLINE_MS in pipeline/config.ts) and the three run in
+// parallel — 600s leaves ample room for research + compute + PDF/XLSX
+// generation + email on even a slow attempt, without holding the door open
+// for a single hung call to eat most of a customer-facing delivery target
+// the way 1800s did on 2026-09-01 (stonesawyer1@gmail.com, GRR-MTJ0ZS2V).
+//
+// This literal must stay equal to ROUTE_MAX_DURATION_SECONDS in
+// pipeline/config.ts — Next's route-segment-config requires a literal
+// number here, so it can't be imported directly; pipeline/config.test.ts
+// asserts the two stay in sync so drift fails the test suite instead of
+// silently reappearing (see config.ts's file-level comment).
 export const maxDuration = 600;
 
 function isNonEmptyString(value: unknown): value is string {
@@ -115,6 +121,9 @@ export async function POST(request: NextRequest) {
     lastAttemptAt: now,
     attemptInProgress: true,
     notifiedProcessingDelay: false,
+    confidenceRounds: 0,
+    holdReason: null,
+    pendingRetryKind: null,
   };
 
   // Persisted BEFORE any slow work starts — this is the durability guarantee.

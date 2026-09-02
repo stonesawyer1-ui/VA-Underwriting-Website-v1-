@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { extractJson } from "./jsonExtract";
 import { withHardDeadline } from "./hardDeadline";
+import { RESEARCH_HARD_DEADLINE_MS, ANTHROPIC_CLIENT_TIMEOUT_MS } from "@/lib/pipeline/config";
 
 export type CondoApproval = {
   applicable: boolean;
@@ -104,85 +105,83 @@ export async function researchMemoNarrative(params: {
   // Hard deadline: 240s, not the 180s briefly used the same night — see
   // researchProperty.ts for the real submission that failed outright
   // because of it.
-  const client = new Anthropic({ apiKey, timeout: 650_000 });
+  const client = new Anthropic({ apiKey, timeout: ANTHROPIC_CLIENT_TIMEOUT_MS });
 
-  let lastErr: unknown;
-  for (let attempt = 0; attempt < 1; attempt++) {
-    try {
-      const response = await withHardDeadline(240_000, (signal) =>
-        client.messages.create(
-          {
-            model: "claude-sonnet-5",
-            max_tokens: 4096,
-            system: SYSTEM_PROMPT,
-            tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 4 }],
-            messages: [
-              {
-                role: "user",
-                content: `Address: ${params.address}\nCity: ${params.city}\nState: ${params.state}\nZip: ${params.zip}\nIs condo: ${params.isCondo}\nAlready-calculated context: ${
-                  params.computedContext ??
-                  "Not yet calculated — this runs in parallel with that step. Keep positive-factor phrasing general (e.g. 'a moderate tax swing relative to other states') rather than citing a specific dollar figure you don't have."
-                }`,
-              },
-            ],
-          },
-          { signal },
-        ),
-      );
-
-      const textBlocks = response.content.filter((b): b is Anthropic.TextBlock => b.type === "text");
-      const fullText = textBlocks.map((b) => b.text).join("\n");
-      const parsed = extractJson(fullText) as {
-        condo_approval?: {
-          applicable?: boolean;
-          status?: string;
-          note?: string;
-          source?: string | null;
-        } | null;
-        market_trends?: {
-          note?: string;
-          sources_conflict?: boolean;
-          bullets?: { note?: string; source?: string | null }[];
-        };
-        positive_factors?: string[];
-        market_risk_rating?: string;
-      };
-
-      const condoApproval: CondoApproval | null = parsed.condo_approval
-        ? {
-            applicable: Boolean(parsed.condo_approval.applicable),
-            status:
-              parsed.condo_approval.status === "approved" || parsed.condo_approval.status === "not_approved"
-                ? parsed.condo_approval.status
-                : "unconfirmed",
-            note: parsed.condo_approval.note ?? "Approval status could not be confirmed from an authoritative source.",
-            source: parsed.condo_approval.source ?? null,
-          }
-        : null;
-
-      const validRatings = ["LOW", "MEDIUM", "MEDIUM-HIGH", "HIGH"] as const;
-      const marketRiskRating = validRatings.includes(parsed.market_risk_rating as (typeof validRatings)[number])
-        ? (parsed.market_risk_rating as (typeof validRatings)[number])
-        : "MEDIUM";
-
-      const result: MemoNarrative = {
-        condoApproval,
-        marketTrends: {
-          note: parsed.market_trends?.note ?? "Market trend data was not conclusively found for this address.",
-          sourcesConflict: Boolean(parsed.market_trends?.sources_conflict),
-          bullets: (parsed.market_trends?.bullets ?? [])
-            .filter((b) => typeof b.note === "string")
-            .map((b) => ({ note: b.note as string, source: b.source ?? null })),
+  const startedAt = Date.now();
+  try {
+    const response = await withHardDeadline(RESEARCH_HARD_DEADLINE_MS, (signal) =>
+      client.messages.create(
+        {
+          model: "claude-sonnet-5",
+          max_tokens: 4096,
+          system: SYSTEM_PROMPT,
+          tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 4 }],
+          messages: [
+            {
+              role: "user",
+              content: `Address: ${params.address}\nCity: ${params.city}\nState: ${params.state}\nZip: ${params.zip}\nIs condo: ${params.isCondo}\nAlready-calculated context: ${
+                params.computedContext ??
+                "Not yet calculated — this runs in parallel with that step. Keep positive-factor phrasing general (e.g. 'a moderate tax swing relative to other states') rather than citing a specific dollar figure you don't have."
+              }`,
+            },
+          ],
         },
-        positiveFactors: (parsed.positive_factors ?? []).filter((f): f is string => typeof f === "string"),
-        marketRiskRating,
-      };
+        { signal },
+      ),
+    );
 
-      return { status: "ok", result };
-    } catch (err) {
-      lastErr = err;
-      console.error(`[memo-narrative] Attempt ${attempt + 1} failed`, err);
-    }
+    const textBlocks = response.content.filter((b): b is Anthropic.TextBlock => b.type === "text");
+    const fullText = textBlocks.map((b) => b.text).join("\n");
+    const parsed = extractJson(fullText) as {
+      condo_approval?: {
+        applicable?: boolean;
+        status?: string;
+        note?: string;
+        source?: string | null;
+      } | null;
+      market_trends?: {
+        note?: string;
+        sources_conflict?: boolean;
+        bullets?: { note?: string; source?: string | null }[];
+      };
+      positive_factors?: string[];
+      market_risk_rating?: string;
+    };
+
+    const condoApproval: CondoApproval | null = parsed.condo_approval
+      ? {
+          applicable: Boolean(parsed.condo_approval.applicable),
+          status:
+            parsed.condo_approval.status === "approved" || parsed.condo_approval.status === "not_approved"
+              ? parsed.condo_approval.status
+              : "unconfirmed",
+          note: parsed.condo_approval.note ?? "Approval status could not be confirmed from an authoritative source.",
+          source: parsed.condo_approval.source ?? null,
+        }
+      : null;
+
+    const validRatings = ["LOW", "MEDIUM", "MEDIUM-HIGH", "HIGH"] as const;
+    const marketRiskRating = validRatings.includes(parsed.market_risk_rating as (typeof validRatings)[number])
+      ? (parsed.market_risk_rating as (typeof validRatings)[number])
+      : "MEDIUM";
+
+    const result: MemoNarrative = {
+      condoApproval,
+      marketTrends: {
+        note: parsed.market_trends?.note ?? "Market trend data was not conclusively found for this address.",
+        sourcesConflict: Boolean(parsed.market_trends?.sources_conflict),
+        bullets: (parsed.market_trends?.bullets ?? [])
+          .filter((b) => typeof b.note === "string")
+          .map((b) => ({ note: b.note as string, source: b.source ?? null })),
+      },
+      positiveFactors: (parsed.positive_factors ?? []).filter((f): f is string => typeof f === "string"),
+      marketRiskRating,
+    };
+
+    console.log("[memo-narrative] Completed", { address: params.address, state: params.state, durationMs: Date.now() - startedAt });
+    return { status: "ok", result };
+  } catch (err) {
+    console.error("[memo-narrative] Attempt failed", { address: params.address, state: params.state, durationMs: Date.now() - startedAt, err });
+    return { status: "error", message: err instanceof Error ? err.message : "Unknown research error" };
   }
-  return { status: "error", message: lastErr instanceof Error ? lastErr.message : "Unknown research error" };
 }

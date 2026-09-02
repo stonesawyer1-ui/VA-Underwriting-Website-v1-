@@ -146,21 +146,40 @@ export async function sendUnderwritingReportToCustomer(params: {
   });
 }
 
+/**
+ * The owner-facing alerting hook: fired exactly once, the moment a job is
+ * finalized held_for_review, so the owner never has to test-submit to
+ * notice one happened. `holdReason` distinguishes the two structurally
+ * different situations at a glance in the inbox (subject line), before even
+ * opening the email — a Path A confidence finding needs a human to check
+ * the actual numbers; a Path B infra-fault hold needs a human to check
+ * whether the research service itself is broken (e.g. a revoked API key).
+ * Conflating the two subject lines was exactly the gap that let a slow API
+ * masquerade as a data-quality problem.
+ */
 export async function sendHoldForReviewNotice(params: {
   referenceId: string;
   reasons: string[];
   customerEmail: string;
   propertyAddress: string;
+  /** Optional for backward compatibility with any in-flight callers; new call sites should always pass this. */
+  holdReason?: "confidence_exhausted" | "infra_fault_exhausted";
 }) {
   const client = getClient();
   if (!client) return;
 
+  const isInfra = params.holdReason === "infra_fault_exhausted";
+  const subjectPrefix = isInfra ? "[INFRA FAULT — investigate service]" : "[Confidence hold — review data]";
+  const explanation = isInfra
+    ? "The research service itself failed to answer after every retry attempt (API errors/timeouts/not configured) — this is NOT a reflection of this property's data. Check the Anthropic integration (API key, quota, outage status) first; the customer was not charged."
+    : "Research succeeded and was given multiple broadened rounds to reach high confidence, but genuinely could not clear the 90% bar. Confirm the numbers by hand, then deliver the report manually.";
+
   const html = `
     <div style="font-family:sans-serif;max-width:560px;margin:0 auto;">
-      <h2 style="color:#c8102e;">Held for manual review — ${params.referenceId}</h2>
+      <h2 style="color:#c8102e;">${subjectPrefix} ${params.referenceId}</h2>
       <p style="color:#222;">
-        ${params.propertyAddress} (${params.customerEmail}) was not confident enough to
-        auto-send. Confirm the numbers by hand, then deliver the report manually.
+        ${params.propertyAddress} (${params.customerEmail})<br/>
+        ${explanation}
       </p>
       <ul style="color:#222;">
         ${params.reasons.map((r) => `<li>${r}</li>`).join("")}
@@ -171,7 +190,7 @@ export async function sendHoldForReviewNotice(params: {
   await sendOrThrow(client, {
     from: resolveFromAddress(),
     to: siteConfig.notifyEmail,
-    subject: `Held for review: ${params.propertyAddress} (${params.referenceId})`,
+    subject: `${subjectPrefix} ${params.propertyAddress} (${params.referenceId})`,
     html,
   });
 }

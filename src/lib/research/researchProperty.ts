@@ -3,6 +3,7 @@ import { extractJson } from "./jsonExtract";
 import { lookupTaxRate, taxRateEntryToResearchOutcome } from "./taxRateDatabase";
 import { withHardDeadline } from "./hardDeadline";
 import { getCachedResearch, setCachedResearch } from "./researchCache";
+import { RESEARCH_HARD_DEADLINE_MS, ANTHROPIC_CLIENT_TIMEOUT_MS, RESEARCH_CACHE_TTL_MS, RESEARCH_CACHE_TTL_SECONDS } from "@/lib/pipeline/config";
 
 export type FieldConfidence = "Confirmed" | "Estimated";
 
@@ -47,8 +48,20 @@ export type ResearchOutcome =
   | { status: "error"; message: string }
   | { status: "ok"; result: PropertyResearch; cached: boolean };
 
-const SYSTEM_PROMPT = `You are researching a specific real estate property, in any U.S. state, to underwrite it for VA rental financing.
-You will be given an address and state. Find, using web search:
+/**
+ * `refinementRound` 0 = the initial pass. 1+ = a confidence-seeking retry
+ * (see processSubmission.ts's confidence gate loop) — the previous pass
+ * left at least one field (typically insurance, occasionally tax) without
+ * a "high"-confidence answer, so this round is told explicitly to try
+ * harder rather than repeat the same search and land on the same result.
+ */
+function systemPrompt(refinementRound: number): string {
+  const refinementNote =
+    refinementRound > 0
+      ? `\n\nIMPORTANT — this is refinement attempt ${refinementRound + 1}: an earlier search for this property did not reach a fully confident answer for at least one field. Do not just repeat the same query. Try additional, different sources this time (a different named insurer's rate guidance, a different assessor page, a state insurance department filing) and different search phrasing before concluding a value can't be found.`
+      : "";
+  return `You are researching a specific real estate property, in any U.S. state, to underwrite it for VA rental financing.
+You will be given an address and state. Find, using web search:${refinementNote}
 
 1. The property's tax district / county / municipality and the CURRENT official combined tax
    rate for that specific parcel - from the county Assessor/Auditor's own published rate
@@ -103,6 +116,7 @@ Units: every field ending in "Pct" is a plain percentage number, e.g. 6.5 for a
 6.5% rate — NOT a fraction like 0.065. Millage fields (totalMillageRate,
 schoolOperatingMillage, schoolBondMillage) are in mills. schoolHomesteadExemption
 is a dollar amount.`;
+}
 
 /**
  * Two-tier cache, both keyed on normalized address, 30-day TTL:
@@ -112,10 +126,9 @@ is a dollar amount.`;
  *    cold starts and is shared across instances; this is what makes
  *    caching meaningfully effective in production (2026-09-01 — the
  *    in-memory-only cache was barely hitting at all in practice).
- * Checked in that order; a fresh result is written to both.
+ * Checked in that order; a fresh result is written to both. TTL comes from
+ * RESEARCH_CACHE_TTL_MS in pipeline/config.ts.
  */
-const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const CACHE_TTL_SECONDS = CACHE_TTL_MS / 1000;
 const cache = new Map<string, { result: PropertyResearch; expiresAt: number }>();
 
 function normalizeCacheKey(address: string, state: string): string {
@@ -146,6 +159,10 @@ export async function researchProperty(
   state: string,
   zip: string,
   knownFacts: { sqft?: number; beds?: number; baths?: number; yearBuilt?: number },
+  options?: {
+    /** >0 signals a confidence-seeking retry — see systemPrompt() and processSubmission.ts. Bypasses the cache in both directions. */
+    refinementRound?: number;
+  },
 ): Promise<ResearchOutcome> {
   // Checked before anything else, including the API-key check below — a
   // verified rate answers the tax question with zero Anthropic cost and no
@@ -165,15 +182,19 @@ export async function researchProperty(
     return { status: "not_configured" };
   }
 
+  const refinementRound = options?.refinementRound ?? 0;
   const cacheKey = normalizeCacheKey(address, state);
-  const cached = cache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) {
-    return { status: "ok", result: cached.result, cached: true };
-  }
-  const redisCached = await getCachedResearch<PropertyResearch>(redisCacheKey(cacheKey));
-  if (redisCached) {
-    cache.set(cacheKey, { result: redisCached, expiresAt: Date.now() + CACHE_TTL_MS });
-    return { status: "ok", result: redisCached, cached: true };
+
+  if (refinementRound === 0) {
+    const cached = cache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return { status: "ok", result: cached.result, cached: true };
+    }
+    const redisCached = await getCachedResearch<PropertyResearch>(redisCacheKey(cacheKey));
+    if (redisCached) {
+      cache.set(cacheKey, { result: redisCached, expiresAt: Date.now() + RESEARCH_CACHE_TTL_MS });
+      return { status: "ok", result: redisCached, cached: true };
+    }
   }
 
   // Hard per-attempt timeout so a slow/stuck web-search round can't silently
@@ -222,20 +243,19 @@ export async function researchProperty(
   // let withHardDeadline below be the real, precise cutoff at a more
   // realistic 240s — enough headroom for genuinely slow searches without
   // reintroducing regression #1.
-  const client = new Anthropic({ apiKey, timeout: 650_000 });
+  const client = new Anthropic({ apiKey, timeout: ANTHROPIC_CLIENT_TIMEOUT_MS });
 
-  let lastErr: unknown;
-  for (let attempt = 0; attempt < 1; attempt++) {
-    try {
-      return await withHardDeadline(240_000, (signal) =>
-        runResearchAttempt(client, address, city, state, zip, knownFacts, cacheKey, signal),
-      );
-    } catch (err) {
-      lastErr = err;
-      console.error(`[research] Attempt ${attempt + 1} failed`, err);
-    }
+  const startedAt = Date.now();
+  try {
+    const result = await withHardDeadline(RESEARCH_HARD_DEADLINE_MS, (signal) =>
+      runResearchAttempt(client, address, city, state, zip, knownFacts, cacheKey, refinementRound, signal),
+    );
+    console.log("[research] Attempt finished", { address, state, refinementRound, durationMs: Date.now() - startedAt });
+    return result;
+  } catch (err) {
+    console.error("[research] Attempt failed", { address, state, refinementRound, durationMs: Date.now() - startedAt, err });
+    return { status: "error", message: err instanceof Error ? err.message : "Unknown research error" };
   }
-  return { status: "error", message: lastErr instanceof Error ? lastErr.message : "Unknown research error" };
 }
 
 async function runResearchAttempt(
@@ -246,13 +266,14 @@ async function runResearchAttempt(
   zip: string,
   knownFacts: { sqft?: number; beds?: number; baths?: number; yearBuilt?: number },
   cacheKey: string,
+  refinementRound: number,
   signal: AbortSignal,
 ): Promise<ResearchOutcome> {
   const response = await client.messages.create(
     {
       model: "claude-sonnet-5",
       max_tokens: 8192,
-      system: SYSTEM_PROMPT,
+      system: systemPrompt(refinementRound),
       tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 3 }],
       messages: [
         {
@@ -310,14 +331,15 @@ async function runResearchAttempt(
     rawResponse: response,
   };
 
-  cache.set(cacheKey, { result, expiresAt: Date.now() + CACHE_TTL_MS });
-  await setCachedResearch(redisCacheKey(cacheKey), result, CACHE_TTL_SECONDS);
+  cache.set(cacheKey, { result, expiresAt: Date.now() + RESEARCH_CACHE_TTL_MS });
+  await setCachedResearch(redisCacheKey(cacheKey), result, RESEARCH_CACHE_TTL_SECONDS);
 
   // Audit log: every research call's raw response, alongside the address it was for.
   console.log("[research] Property research completed", {
     address,
     state,
     taxModel: result.taxModel,
+    refinementRound,
   });
 
   return { status: "ok", result, cached: false };

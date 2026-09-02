@@ -18,6 +18,7 @@ import { UnderwritingReportDocument, type UnderwritingReportData } from "@/lib/p
 import { UnderwritingDetailDocument } from "@/lib/pdf/UnderwritingDetailDocument";
 import { getStripeClient } from "@/lib/stripe";
 import { saveJob, removePendingJob, isJobStoreConfigured, type ProcessingJob } from "@/lib/jobStore";
+import { MAX_INFRA_ATTEMPTS, MAX_CONFIDENCE_ROUNDS } from "@/lib/pipeline/config";
 
 /** e.g. " (Unit 1: 3bd/2ba, Unit 2: 2bd/1ba)" — blank unless at least one unit has a real value, so a duplex the buyer left blank still just shows the plain total bed/bath line. */
 function unitBreakdownSuffix(units: { beds: number | ""; baths: number | "" }[]): string {
@@ -49,7 +50,7 @@ async function chargeAllowanceForJob(job: ProcessingJob): Promise<void> {
   job.entitlement = { ...job.entitlement, used: newUsedCount };
 }
 
-export type ProcessSubmissionResult = "completed" | "held_for_review" | "needs_retry";
+export type ProcessSubmissionResult = "completed" | "held_for_review" | "needs_retry" | "needs_confidence_retry";
 
 /**
  * The full research -> compute -> confidence gate -> PDFs -> delivery
@@ -57,18 +58,37 @@ export type ProcessSubmissionResult = "completed" | "held_for_review" | "needs_r
  * inline "Stage B" so both the first synchronous attempt and every
  * background retry call the exact same logic.
  *
- * "needs_retry" (new, 2026-08-31): a research-service failure (Anthropic
- * error, timeout, not configured) no longer falls straight to hold-for-review
- * after a single attempt — it's retry-eligible instead, since that's exactly
- * what let a genuinely-fine property (finnx27's case) get stuck on a slow
- * research round rather than actually failing. A GENUINE data-quality gap
- * (research succeeded but came back low-confidence) still holds for review
- * immediately, same as always — that's a real finding, not a fault to retry.
+ * Two independent retry-eligible outcomes, kept deliberately distinct end to
+ * end (job fields, config constants, email copy, everything) so they can
+ * never be conflated into one generic "didn't work" bucket:
+ *
+ * - "needs_retry" (Path B, infrastructure fault — Anthropic error, timeout,
+ *   or ANTHROPIC_API_KEY not configured): the research service itself
+ *   failed to answer at all. This is never a reflection of this property's
+ *   real data, so it's never charged and never treated as a confidence
+ *   finding — see runJobAttempt for the backoff-and-retry handling.
+ *
+ * - "needs_confidence_retry" (Path A, a genuine but not-yet-exhausted
+ *   confidence-gate finding — research succeeded but didn't clear the 90%
+ *   ("high") bar): rather than holding for review the moment the bar isn't
+ *   cleared, the job gets more chances to actually raise its own
+ *   confidence — broader search radius, alternate sources/phrasing (see
+ *   researchRentEstimate.ts / researchProperty.ts's refinementRound) —
+ *   before MAX_CONFIDENCE_ROUNDS is reached and it's accepted as a real
+ *   data-quality gap rather than something more search effort would fix.
+ *   Also never charged until that point, since charging happens exactly
+ *   once, on a genuine terminal outcome (see chargeAllowanceForJob's call
+ *   sites below).
  */
 export async function processSubmission(job: ProcessingJob): Promise<ProcessSubmissionResult> {
   const { formData, referenceId } = job;
   const isCondo = formData.property.propertyType === "condo";
+  // 0 on the very first pass; >0 once a prior round's gate failed without
+  // being exhausted — see the "needs_confidence_retry" branch below and
+  // runJobAttempt, which increments this on the job before the next attempt.
+  const refinementRound = job.confidenceRounds ?? 0;
 
+  const researchStartedAt = Date.now();
   const [research, rentResearch, narrative] = await Promise.all([
     researchProperty(
       formData.property.address,
@@ -81,18 +101,26 @@ export async function processSubmission(job: ProcessingJob): Promise<ProcessSubm
         baths: typeof formData.property.baths === "number" ? formData.property.baths : undefined,
         yearBuilt: typeof formData.property.yearBuilt === "number" ? formData.property.yearBuilt : undefined,
       },
+      { refinementRound },
     ),
-    researchRentEstimate(formData.property.address, formData.property.city, formData.property.state, formData.property.zip, {
-      sqft: typeof formData.property.sqft === "number" ? formData.property.sqft : undefined,
-      beds: typeof formData.property.beds === "number" ? formData.property.beds : undefined,
-      baths: typeof formData.property.baths === "number" ? formData.property.baths : undefined,
-      units: formData.property.units.some((u) => u.beds !== "" || u.baths !== "")
-        ? formData.property.units.map((u) => ({
-            beds: typeof u.beds === "number" ? u.beds : undefined,
-            baths: typeof u.baths === "number" ? u.baths : undefined,
-          }))
-        : undefined,
-    }),
+    researchRentEstimate(
+      formData.property.address,
+      formData.property.city,
+      formData.property.state,
+      formData.property.zip,
+      {
+        sqft: typeof formData.property.sqft === "number" ? formData.property.sqft : undefined,
+        beds: typeof formData.property.beds === "number" ? formData.property.beds : undefined,
+        baths: typeof formData.property.baths === "number" ? formData.property.baths : undefined,
+        units: formData.property.units.some((u) => u.beds !== "" || u.baths !== "")
+          ? formData.property.units.map((u) => ({
+              beds: typeof u.beds === "number" ? u.beds : undefined,
+              baths: typeof u.baths === "number" ? u.baths : undefined,
+            }))
+          : undefined,
+      },
+      { refinementRound },
+    ),
     researchMemoNarrative({
       address: formData.property.address,
       city: formData.property.city,
@@ -101,6 +129,19 @@ export async function processSubmission(job: ProcessingJob): Promise<ProcessSubm
       isCondo,
     }),
   ]);
+  // Structured timing for the parallel research fan-out as a whole — the
+  // observability gap the owner called out: previously only success/failure
+  // was logged, never how long a round actually took, so a customer's "why
+  // is my report late" question meant reading through several separate
+  // per-call logs and doing the math by hand.
+  console.log("[processSubmission] Research round finished", {
+    referenceId,
+    refinementRound,
+    durationMs: Date.now() - researchStartedAt,
+    researchStatus: research.status,
+    rentResearchStatus: rentResearch.status,
+    narrativeStatus: narrative.status,
+  });
 
   const resolvedTax = resolveTaxInputs(formData, research);
   const insurance = resolveYearlyInsurance(formData, research);
@@ -116,9 +157,12 @@ export async function processSubmission(job: ProcessingJob): Promise<ProcessSubm
 
   if (isInfrastructureFault) {
     // Never charged, never notified here — the job stays "processing" and
-    // the caller (route handler or retry sweep) decides whether to try
-    // again or, after enough attempts, fall back to a genuine hold-for-review.
-    console.error("[processSubmission] Infrastructure fault — eligible for retry", {
+    // runJobAttempt decides whether to try again (with backoff) or, only
+    // after MAX_INFRA_ATTEMPTS genuinely-exhausted attempts, fall back to a
+    // clearly-labeled infra-fault hold. This branch is entirely independent
+    // of the confidence-seeking logic below — an infrastructure fault is
+    // never treated as (or counted toward) a confidence-gate finding.
+    console.error("[processSubmission] Infrastructure fault (Path B) — eligible for retry", {
       referenceId,
       attempts: job.attempts,
       researchStatus: research.status,
@@ -128,12 +172,38 @@ export async function processSubmission(job: ProcessingJob): Promise<ProcessSubm
   }
 
   if (!gate.passed) {
+    const roundsCompleted = refinementRound + 1; // this round just ran
+    if (roundsCompleted < MAX_CONFIDENCE_ROUNDS) {
+      // A real finding, but not yet an exhausted one — keep working the
+      // problem instead of giving up on the first below-bar answer. The
+      // next round (see runJobAttempt) reruns research with a broader
+      // search asked for explicitly, not a repeat of the identical query.
+      console.log("[processSubmission] Confidence gate below 90% bar (Path A) — retrying with broader research", {
+        referenceId,
+        roundsCompleted,
+        maxRounds: MAX_CONFIDENCE_ROUNDS,
+        reasons: gate.reasons,
+      });
+      return "needs_confidence_retry";
+    }
+
+    // Genuinely exhausted MAX_CONFIDENCE_ROUNDS worth of real search effort
+    // and still below the bar — this is now a real data-quality finding, not
+    // a fault, so it's charged and finalized exactly like the pre-existing
+    // behavior, just with an honest count of how much extra effort already
+    // went into it.
+    console.log("[processSubmission] Confidence gate exhausted after full refinement effort — genuine hold for review", {
+      referenceId,
+      roundsCompleted,
+      reasons: gate.reasons,
+    });
     await chargeAllowanceForJob(job);
     await sendHoldForReviewNotice({
       referenceId,
       reasons: gate.reasons,
       customerEmail: formData.customer.email,
       propertyAddress: formData.property.address,
+      holdReason: "confidence_exhausted",
     });
     try {
       await sendCustomerReviewDelayNotice({
@@ -264,25 +334,32 @@ export async function processSubmission(job: ProcessingJob): Promise<ProcessSubm
 }
 
 /**
- * At most ~24 real minutes worst-case (5 attempts, each up to a 4-minute
- * research deadline, spaced by up to a 1-minute sweep tick to notice each
- * failure — see vercel.json and researchProperty.ts) — inside the
- * 25-minute delivery target even if every attempt fails outright, while
- * still giving a genuinely transient research outage several real chances
- * to clear, each with enough real time to plausibly succeed, before a
- * human takes over.
- */
-const MAX_ATTEMPTS = 5;
-
-/**
  * Runs one attempt of `processSubmission` for a job and handles every
  * outcome — persisting job status, removing it from the pending set once
  * it's done, and sending the right customer email. Shared by both the
  * intake route's first (background) attempt and every retry the sweep
  * endpoint drives, so "what happens after an attempt" is defined in exactly
  * one place.
+ *
+ * Handles four outcomes, each mapped to exactly one job-state transition:
+ * - "completed": terminal, already charged inside processSubmission.
+ * - "held_for_review": terminal, a genuine Path A confidence-exhausted
+ *   finding — already charged and already notified inside processSubmission
+ *   (see the comment there); this branch just persists the final status.
+ * - "needs_confidence_retry": Path A, not yet exhausted — increments
+ *   job.confidenceRounds and leaves the job "processing" for another round.
+ * - "needs_retry": Path B, an infrastructure fault — increments nothing new
+ *   here (job.attempts is incremented by the caller before invoking this
+ *   function, same as before); leaves the job "processing" until
+ *   MAX_INFRA_ATTEMPTS is reached, at which point it's the one and only
+ *   place an infra fault becomes a (clearly-labeled, never-charged)
+ *   held_for_review — the last-resort safety valve so a job can never be
+ *   stuck "processing" forever with no human ever finding out, even though
+ *   ordinary "the API was slow" or "one call failed" never reaches it (see
+ *   MAX_INFRA_ATTEMPTS's comment in config.ts for the numbers behind that).
  */
 export async function runJobAttempt(job: ProcessingJob): Promise<void> {
+  const attemptStartedAt = Date.now();
   let result: ProcessSubmissionResult;
   try {
     result = await processSubmission(job);
@@ -290,7 +367,7 @@ export async function runJobAttempt(job: ProcessingJob): Promise<void> {
     // An unexpected crash (not a handled research-service error) is treated
     // the same as an infrastructure fault — retry-eligible, never charged —
     // rather than silently losing the submission.
-    console.error("[runJobAttempt] processSubmission threw unexpectedly — treating as retryable", {
+    console.error("[runJobAttempt] processSubmission threw unexpectedly — treating as retryable (Path B)", {
       referenceId: job.referenceId,
       attempts: job.attempts,
       err,
@@ -298,34 +375,73 @@ export async function runJobAttempt(job: ProcessingJob): Promise<void> {
     result = "needs_retry";
   }
 
+  const attemptDurationMs = Date.now() - attemptStartedAt;
+  console.log("[runJobAttempt] Attempt finished", {
+    referenceId: job.referenceId,
+    result,
+    attemptDurationMs,
+    attempts: job.attempts,
+    confidenceRounds: job.confidenceRounds ?? 0,
+  });
+
   // This attempt has now genuinely finished, one way or another — clear the
   // flag before anything else so the sweep can safely retry a still-eligible
   // job on its very next tick instead of waiting out the time-based fallback.
   job.attemptInProgress = false;
 
-  if (result === "completed" || result === "held_for_review") {
-    job.status = result;
+  if (result === "completed") {
+    job.status = "completed";
+    job.pendingRetryKind = null;
     await saveJob(job);
     await removePendingJob(job.referenceId);
     return;
   }
 
-  // result === "needs_retry"
-  const exhausted = job.attempts >= MAX_ATTEMPTS || !isJobStoreConfigured();
-  if (exhausted) {
-    // Either every retry has been used, or there's no job store configured
-    // to retry against at all — finalize exactly like the pre-async
-    // behavior: no charge, honest "our research service had trouble"
-    // wording, held for a human to finish by hand.
+  if (result === "held_for_review") {
+    // processSubmission already decided this is a genuine, fully-exhausted
+    // Path A confidence finding and already charged + notified — this is
+    // just persisting the final state.
     job.status = "held_for_review";
+    job.holdReason = "confidence_exhausted";
+    job.pendingRetryKind = null;
+    await saveJob(job);
+    await removePendingJob(job.referenceId);
+    return;
+  }
+
+  if (result === "needs_confidence_retry") {
+    // Path A, not yet exhausted — keep working the problem. Not charged,
+    // not held; just one more round of broader research on the next sweep
+    // tick (spaced by the confidence backoff — see retryPolicy.ts).
+    job.confidenceRounds = (job.confidenceRounds ?? 0) + 1;
+    job.pendingRetryKind = "confidence";
+    await saveJob(job);
+    await notifyProcessingDelayOnce(job);
+    return;
+  }
+
+  // result === "needs_retry" (Path B, infrastructure fault)
+  const exhausted = job.attempts >= MAX_INFRA_ATTEMPTS || !isJobStoreConfigured();
+  if (exhausted) {
+    // Every retry has been used, or there's no job store configured to
+    // retry against at all — finalize as a clearly-labeled infra-fault
+    // hold: no charge, honest "our research service had trouble" wording,
+    // held for a human to finish by hand. This is the one and only place an
+    // infra fault becomes held_for_review, and only after MAX_INFRA_ATTEMPTS
+    // (with exponential backoff between them) genuinely failed to recover —
+    // never "by itself" from one slow call or one failed attempt.
+    job.status = "held_for_review";
+    job.holdReason = "infra_fault_exhausted";
+    job.pendingRetryKind = null;
     await saveJob(job);
     await removePendingJob(job.referenceId);
     try {
       await sendHoldForReviewNotice({
         referenceId: job.referenceId,
-        reasons: [`Automated research did not complete after ${job.attempts} attempt(s) — needs a manual check.`],
+        reasons: [`Automated research did not complete after ${job.attempts} attempt(s) — infrastructure fault, needs investigation, not a data-quality check.`],
         customerEmail: job.formData.customer.email,
         propertyAddress: job.formData.property.address,
+        holdReason: "infra_fault_exhausted",
       });
     } catch (err) {
       console.error("[runJobAttempt] Failed to send hold-for-review notice", err);
@@ -346,18 +462,23 @@ export async function runJobAttempt(job: ProcessingJob): Promise<void> {
   // Still eligible for another attempt — leave it "processing" (already is)
   // and persist the incremented attempt count/timestamp the caller set
   // before invoking this attempt.
+  job.pendingRetryKind = "infra";
   await saveJob(job);
-  if (!job.notifiedProcessingDelay) {
-    job.notifiedProcessingDelay = true;
-    try {
-      await sendStillProcessingNotice({
-        referenceId: job.referenceId,
-        customerEmail: job.formData.customer.email,
-        customerName: job.formData.customer.name,
-      });
-    } catch (err) {
-      console.error("[runJobAttempt] Failed to send still-processing notice", err);
-    }
-    await saveJob(job);
+  await notifyProcessingDelayOnce(job);
+}
+
+/** The one-time "this is taking longer than usual" email — sent once per job, on whichever retry path first triggers it, not on every subsequent round. */
+async function notifyProcessingDelayOnce(job: ProcessingJob): Promise<void> {
+  if (job.notifiedProcessingDelay) return;
+  job.notifiedProcessingDelay = true;
+  try {
+    await sendStillProcessingNotice({
+      referenceId: job.referenceId,
+      customerEmail: job.formData.customer.email,
+      customerName: job.formData.customer.name,
+    });
+  } catch (err) {
+    console.error("[runJobAttempt] Failed to send still-processing notice", err);
   }
+  await saveJob(job);
 }

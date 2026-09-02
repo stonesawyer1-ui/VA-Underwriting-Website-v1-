@@ -63,7 +63,16 @@ export async function POST(request: NextRequest) {
   }
 
   const attemptsBefore = job.attempts;
-  const updated = { ...job, attempts: job.attempts + 1, lastAttemptAt: new Date().toISOString(), attemptInProgress: true };
+  // Mirrors process-pending's own accounting: a pending confidence-retry
+  // (Path A) doesn't consume the infra-fault attempts budget (Path B), and
+  // vice versa — see runJobAttempt/processSubmission.ts.
+  const isConfidenceRetry = job.pendingRetryKind === "confidence";
+  const updated = {
+    ...job,
+    attempts: isConfidenceRetry ? job.attempts : job.attempts + 1,
+    lastAttemptAt: new Date().toISOString(),
+    attemptInProgress: true,
+  };
   await saveJob(updated);
   await runJobAttempt(updated);
   const after = await getJob(referenceId);

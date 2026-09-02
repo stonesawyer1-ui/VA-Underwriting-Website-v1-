@@ -4,6 +4,30 @@ import type { EntitlementPayload } from "@/lib/entitlementToken";
 
 export type JobStatus = "processing" | "completed" | "held_for_review";
 
+/**
+ * Why a job ended up held_for_review — answerable from data instead of log
+ * archaeology. null for a job that isn't (or isn't yet) held.
+ *
+ * - "confidence_exhausted": Path A. Research genuinely ran (successfully)
+ *   and the confidence gate never cleared the 90% bar even after
+ *   MAX_CONFIDENCE_ROUNDS of broadened research effort. A real
+ *   data-quality finding — the customer's allowance was charged normally.
+ * - "infra_fault_exhausted": Path B. The research service itself kept
+ *   erroring/timing out/being unconfigured across MAX_INFRA_ATTEMPTS
+ *   attempts. Never a reflection of this property's actual data, and never
+ *   charged — this is the pipeline giving up on an infrastructure problem,
+ *   not a judgment about the report.
+ */
+export type HoldReason = "confidence_exhausted" | "infra_fault_exhausted" | null;
+
+/**
+ * Which retry counter/backoff a currently-"processing" job is waiting on,
+ * for the sweep and admin/replay to space the next attempt correctly (see
+ * retryPolicy.ts's isBackoffElapsed). null when no retry is pending (a job
+ * on its first attempt, or a terminal job).
+ */
+export type PendingRetryKind = "infra" | "confidence" | null;
+
 export type ProcessingJob = {
   referenceId: string;
   status: JobStatus;
@@ -29,6 +53,19 @@ export type ProcessingJob = {
   attemptInProgress: boolean;
   /** Whether the one-time "this is taking longer than usual" email has already gone out — sent once, not on every retry. */
   notifiedProcessingDelay: boolean;
+  /**
+   * How many confidence-seeking research rounds beyond the initial pass have
+   * completed for this job (Path A) — 0 until the first time the gate fails
+   * without being exhausted. Distinct from `attempts`, which only
+   * increments for Path B infrastructure-fault retries. Missing on any job
+   * record written before this feature — reads as 0/undefined, which is the
+   * correct starting value.
+   */
+  confidenceRounds: number;
+  /** See HoldReason. null until (and unless) the job is finalized held_for_review. */
+  holdReason: HoldReason;
+  /** See PendingRetryKind. */
+  pendingRetryKind: PendingRetryKind;
 };
 
 const PENDING_SET_KEY = "pending_jobs";
