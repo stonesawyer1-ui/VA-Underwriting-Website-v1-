@@ -105,42 +105,6 @@ export default function PricingPage() {
         </Container>
       </section>
 
-      <section className="bg-white py-14">
-        <Container>
-          <Reveal>
-            <div className="mx-auto max-w-md rounded-sm border border-navy-900/10 bg-navy-50 p-6 text-center">
-              <p className="text-sm font-semibold tracking-wide text-navy-900 uppercase">Have a promo code?</p>
-              <p className="mt-1 text-xs text-navy-900/50">
-                A valid code skips checkout entirely and unlocks the intake form for free.
-              </p>
-              {/* Plain server-rendered GET form — no client JS needed. Submitting
-                  navigates to /get-started?session_id=<code>, reusing the exact
-                  same OWNER_TEST_CODE / FRIEND_TEST_CODES check that route
-                  already runs (see get-started/page.tsx) — an invalid code just
-                  falls through to that page's "couldn't find that order or
-                  promo code" message rather than needing separate validation here. */}
-              <form action="/get-started" method="get" className="mt-4 flex gap-2">
-                <input
-                  type="text"
-                  name="session_id"
-                  placeholder="Enter code"
-                  autoCapitalize="characters"
-                  autoComplete="off"
-                  required
-                  className="w-full min-w-0 flex-1 rounded-sm border border-navy-900/15 bg-white px-3 py-2.5 text-sm text-navy-900 placeholder:text-navy-900/30 focus:border-navy-900/40 focus:outline-none"
-                />
-                <button
-                  type="submit"
-                  className="shrink-0 rounded-sm bg-navy-900 px-4 py-2.5 text-sm font-semibold tracking-wide text-white uppercase transition-colors hover:bg-navy-900/85"
-                >
-                  Apply
-                </button>
-              </form>
-            </div>
-          </Reveal>
-        </Container>
-      </section>
-
       <section className="bg-white py-20">
         <Container>
           <Reveal>
