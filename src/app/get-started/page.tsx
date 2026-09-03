@@ -7,6 +7,10 @@ import { getStripeClient } from "@/lib/stripe";
 import { createEntitlementToken, signEntitlement } from "@/lib/entitlementToken";
 import { getPricingTier, siteConfig } from "@/lib/site";
 import { sendCheckoutConfirmationEmail } from "@/lib/email";
+import { getFriendCodeUsedCount } from "@/lib/friendCodes";
+
+/** How many free reports each FRIEND_TEST_CODES code grants — see the check below. */
+const FRIEND_CODE_ALLOWANCE = 1;
 
 export const metadata: Metadata = {
   title: "Get Started",
@@ -72,6 +76,38 @@ export default async function GetStartedPage({
       customerEmail: null,
     });
     return <GetStartedForm token={token} tierId="sentry" allowance={999} used={0} />;
+  }
+
+  // Friend/referral free-trial codes: same real-pipeline bypass as the
+  // owner's own code above, but each code is limited to FRIEND_CODE_ALLOWANCE
+  // reports (tracked in Redis — see friendCodes.ts — since there's no Stripe
+  // Checkout Session here to store a "used" count in the way a real paid
+  // order does). stripeSessionId is tagged "friend:<code>" rather than the
+  // bare "demo" sentinel so chargeAllowanceForJob (processSubmission.ts)
+  // knows to increment this specific code's Redis counter instead of either
+  // updating Stripe metadata or silently skipping usage tracking entirely.
+  const friendCodes = (process.env.FRIEND_TEST_CODES ?? "")
+    .split(",")
+    .map((c) => c.trim())
+    .filter(Boolean);
+  if (friendCodes.includes(sessionId)) {
+    const used = await getFriendCodeUsedCount(sessionId);
+    if (used >= FRIEND_CODE_ALLOWANCE) {
+      return (
+        <GateMessage
+          title="This free trial link has already been used."
+          body="Each referral link is good for one free property review. Choose a plan to run another."
+        />
+      );
+    }
+    const token = signEntitlement({
+      stripeSessionId: `friend:${sessionId}`,
+      tierId: "sentry",
+      allowance: FRIEND_CODE_ALLOWANCE,
+      used,
+      customerEmail: null,
+    });
+    return <GetStartedForm token={token} tierId="sentry" allowance={FRIEND_CODE_ALLOWANCE} used={used} />;
   }
 
   const stripe = getStripeClient();

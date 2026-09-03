@@ -19,6 +19,7 @@ import { propertyTypeLabel } from "@/lib/underwriting/defaults";
 import { UnderwritingReportDocument, type UnderwritingReportData } from "@/lib/pdf/UnderwritingReportDocument";
 import { UnderwritingDetailDocument } from "@/lib/pdf/UnderwritingDetailDocument";
 import { getStripeClient } from "@/lib/stripe";
+import { incrementFriendCodeUsedCount } from "@/lib/friendCodes";
 import { saveJob, removePendingJob, isJobStoreConfigured, type ProcessingJob } from "@/lib/jobStore";
 import { MAX_INFRA_ATTEMPTS, MAX_CONFIDENCE_ROUNDS } from "@/lib/pipeline/config";
 
@@ -30,23 +31,36 @@ function unitBreakdownSuffix(units: { beds: number | ""; baths: number | "" }[])
   return ` (${parts.join(", ")})`;
 }
 
+/** Prefix get-started/page.tsx tags a friend/referral test code's entitlement with — see chargeAllowanceForJob below and friendCodes.ts. */
+const FRIEND_CODE_PREFIX = "friend:";
+
 /**
  * Charges one allowance slot against the entitlement snapshot carried on the
  * job — the same Stripe-metadata persistence the synchronous path always
  * used, just addressed by the job's own entitlement rather than a
  * request-scoped closure, since this now also runs from the background
  * retry sweep with no HTTP request in scope at all.
+ *
+ * A friend/referral test code (stripeSessionId prefixed "friend:", see
+ * get-started/page.tsx) has no Stripe Checkout Session to update — it's
+ * charged against its own Redis-backed usage counter (friendCodes.ts)
+ * instead, the authoritative store for those codes' 1-use limit.
  */
 async function chargeAllowanceForJob(job: ProcessingJob): Promise<void> {
-  const stripe = getStripeClient();
   const newUsedCount = job.entitlement.used + 1;
-  if (stripe && job.entitlement.stripeSessionId !== "demo") {
-    try {
-      await stripe.checkout.sessions.update(job.entitlement.stripeSessionId, {
-        metadata: { used: String(newUsedCount) },
-      });
-    } catch (err) {
-      console.error("[processSubmission] Failed to persist usage count to Stripe session", err);
+  if (job.entitlement.stripeSessionId.startsWith(FRIEND_CODE_PREFIX)) {
+    const code = job.entitlement.stripeSessionId.slice(FRIEND_CODE_PREFIX.length);
+    await incrementFriendCodeUsedCount(code);
+  } else {
+    const stripe = getStripeClient();
+    if (stripe && job.entitlement.stripeSessionId !== "demo") {
+      try {
+        await stripe.checkout.sessions.update(job.entitlement.stripeSessionId, {
+          metadata: { used: String(newUsedCount) },
+        });
+      } catch (err) {
+        console.error("[processSubmission] Failed to persist usage count to Stripe session", err);
+      }
     }
   }
   job.entitlement = { ...job.entitlement, used: newUsedCount };
