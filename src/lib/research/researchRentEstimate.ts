@@ -94,9 +94,11 @@ Put your reasoning, any adjustments you made, and caveats in "confidence_note" a
 Write "confidence_note" (and every other text field) in professional, plain-language business
 prose for a homebuyer client, as a real-estate analyst would — describe only the property, the
 comps you found, and market conditions. Never mention web searches, tools, retries, technical
-limitations, or anything about how you performed the research. If you genuinely could not find
-comps, state that as a market-data finding (e.g. "no active comparable listings were identified
-within the search radius"), not as an explanation of a technical process.
+limitations, or anything about how you performed the research - no mentions of "web search,"
+"tool budget," "tool-use limit," being "exhausted," a "session," an "API," or similar
+internal/technical language. If you genuinely could not find comps, state that as a market-data
+finding (e.g. "no active comparable listings were identified within the search radius"), not as an
+explanation of a technical process.
 
 Valid JSON only: never use a literal double-quote character inside a string value (e.g. when quoting a phrase from a source) - use single quotes ' ' instead, since an embedded " breaks the surrounding string.
 

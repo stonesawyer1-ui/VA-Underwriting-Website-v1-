@@ -67,6 +67,16 @@ export type UnderwritingReportData = {
     buyerEstimate: { monthly: number; confidence: "low" | "moderate" | "high" } | null;
     researchEstimate: { monthly: number; confidence: "low" | "moderate" | "high" } | null;
   } | null;
+  /**
+   * Evidence-based accuracy assessment for a BUYER-SUPPLIED rent figure,
+   * built from research's own comps/range (see rentAccuracyNarrative.ts) —
+   * null whenever rent came from research or a regional average instead,
+   * since rentConfidenceLabel above already covers those cases. Added
+   * 2026-09-03 per the owner's policy: a buyer-supplied number is used for
+   * the math regardless of the buyer's own confidence rating, but the
+   * report still owes the reader an honest, evidence-based read on it.
+   */
+  rentAccuracyNarrative: string | null;
   rentAfterVacancy: number;
   moneyLeftOverMonthly: number;
   moneyLeftOverYearly: number;
@@ -247,6 +257,13 @@ export function UnderwritingReportDocument(data: UnderwritingReportData) {
           . Money left over per year: {formatCurrency(data.moneyLeftOverYearly)}. Cash-on-cash return:{" "}
           {formatPercent(data.cashOnCashPct, 2)}. Cap rate: {formatPercent(data.capRatePct * 100, 2)}.
         </Text>
+
+        {data.rentAccuracyNarrative && (
+          <View style={[styles.flagBox, styles.flagBoxAmber]}>
+            <Text style={styles.flagTitle}>Rent Estimate — Accuracy Evidence (Buyer-Supplied Figure)</Text>
+            <Text style={styles.p}>{data.rentAccuracyNarrative}</Text>
+          </View>
+        )}
 
         {data.rentComps.length > 0 && (
           <View style={styles.table}>

@@ -7,24 +7,30 @@ export type ConfidenceGateResult = {
   passed: boolean;
   reasons: string[];
   /**
-   * Which research call(s) actually failed the gate this round — added
-   * 2026-09-02 so a confidence-refinement retry (processSubmission.ts) can
-   * target only the call(s) that need another, broadened attempt instead of
-   * blanket-retrying every research call regardless of which one was
-   * actually the problem. `needsPropertyRefinement` maps to the insurance
-   * check (researchProperty's domain); `needsRentRefinement` maps to the
-   * rent checks (researchRentEstimate's domain, or the buyer's own
-   * estimate — see the note on that field for why a buyer-confidence
-   * shortfall still doesn't trigger a researchRentEstimate retry).
+   * Which research call(s) actually failed the gate this round AND could
+   * plausibly be improved by another, broadened attempt — added 2026-09-02,
+   * tightened 2026-09-03. These two flags now do double duty: they still
+   * tell processSubmission's targeted retry which call(s) to broaden, but
+   * they're ALSO the sole signal of whether ANOTHER ROUND IS WORTH RUNNING
+   * AT ALL. A failing reason that is structurally unfixable by research (a
+   * buyer-input gap, or a placeholder fallback with no data source left to
+   * query) never sets its corresponding flag, specifically so
+   * processSubmission holds for review on round 1 instead of burning all of
+   * MAX_CONFIDENCE_ROUNDS retrying something a broader search can never
+   * change (the real incident that prompted this: GRR-MTKIHYO2, 2026-09-03
+   * — see the reasoning inline on each branch below for why it is or isn't
+   * retryable).
+   *
+   * `needsPropertyRefinement` maps to the insurance check (researchProperty's
+   * domain); `needsRentRefinement` maps to the rent checks
+   * (researchRentEstimate's domain).
    */
   needsPropertyRefinement: boolean;
   /**
-   * True only when the rent shortfall is on the *research* side
-   * (rentSource === "research"). A buyer-supplied rent estimate below the
-   * confidence bar has no research call to retry — broadening
-   * researchRentEstimate wouldn't touch the actual cause, so
-   * processSubmission's refinement loop has nothing useful to do for that
-   * case beyond waiting out MAX_CONFIDENCE_ROUNDS on the buyer's own number.
+   * True only when broadening researchRentEstimate could plausibly change
+   * the outcome — never true for a buyer-supplied rent number (there is no
+   * research call backing that number at all — see the "customer" branch
+   * below, which as of 2026-09-03 is no longer even a gate finding).
    */
   needsRentRefinement: boolean;
 };
@@ -72,36 +78,58 @@ const CONFIDENCE_PASS_BAR = "high" as const;
 export function evaluateConfidenceGate(
   research: ResearchOutcome,
   rentResearch: RentResearchOutcome,
-  customerRentConfidence: "low" | "moderate" | "high",
+  // Deliberately unused as of 2026-09-03 — see the "customer" branch's
+  // comment below for why a buyer's self-rated rent confidence is no longer
+  // a gate finding. Kept in the signature so every call site doesn't need
+  // updating for what's now a deliberately-unused input, and so a future
+  // reviewer can see exactly what was dropped rather than wondering why the
+  // signature doesn't match the buyer-facing field it's named after.
+  _customerRentConfidence: "low" | "moderate" | "high",
   insuranceSource: InsuranceSource,
   rentSource: RentSource,
 ): ConfidenceGateResult {
   const reasons: string[] = [];
-  let needsPropertyRefinement = false;
+  const needsPropertyRefinement = false;
   let needsRentRefinement = false;
 
   // A research-backed market-rate estimate is accepted on its own — only a
-  // bare, no-data-at-all placeholder (no buyer quote AND no research result)
-  // holds for review.
+  // bare, no-data-at-all placeholder holds for review. Per buildEngineInputs
+  // .ts's resolveYearlyInsurance, "default_estimate" is reachable ONLY when
+  // the purchase price itself is missing (customer quote absent, research
+  // estimate absent or empty, AND the price-scaled regional-average fallback
+  // also has no price to scale from). That's a buyer-input gap — the buyer
+  // never entered a purchase price — not a research shortfall. No amount of
+  // re-running researchProperty can conjure a purchase price the buyer never
+  // gave, so this does NOT set needsPropertyRefinement: retrying here would
+  // just burn MAX_CONFIDENCE_ROUNDS reproducing the identical placeholder
+  // every round before landing on the exact same hold. This is the "insurance
+  // already fell back to a bare placeholder... retrying isn't going to
+  // conjure a quote" case from the 2026-09-03 gate audit.
   if (insuranceSource === "default_estimate") {
     reasons.push(
       "No insurance figure available from the buyer or research — the memo would use a generic placeholder rather than a market-rate estimate.",
     );
-    needsPropertyRefinement = true;
   }
 
   // A regional-average estimate is an intentional, disclosed fallback (tied
   // to this property's own purchase price) for when neither the buyer nor
   // research can supply a number — it's accepted on its own so a data gap
-  // never blocks the submission; only "unavailable" (no purchase price to
-  // even scale from) still holds for review.
+  // never blocks the submission; only "unavailable" (research found nothing
+  // usable AND there's no purchase price to fall back to a regional average
+  // with either) still holds for review.
+  //
+  // Unlike the insurance placeholder above, this genuinely IS worth
+  // retrying: resolveMonthlyRent() re-checks rentResearch fresh every round,
+  // so if a broadened researchRentEstimate search turns up a usable
+  // base/low/high this round, rentSource flips from "unavailable" to
+  // "research" and this specific reason disappears on its own — even though
+  // the missing-purchase-price half of the condition never changes. (Only
+  // reachable here in the first place because rentResearch didn't already
+  // error/not_configure — processSubmission treats that as Path B before
+  // this gate ever runs — so there's a live research outcome to broaden.)
   if (rentSource === "unavailable") {
     reasons.push("No rent figure available from the buyer, research, or a regional estimate.");
-  } else if (rentSource === "customer" && customerRentConfidence !== CONFIDENCE_PASS_BAR) {
-    reasons.push(`Rent estimate is not backed by at least ${CONFIDENCE_PASS_BAR} confidence from the buyer (rated "${customerRentConfidence}").`);
-    // Nothing to refine here — this is the buyer's own number, not a
-    // researchRentEstimate result, so a broader research search wouldn't
-    // change it.
+    needsRentRefinement = true;
   } else if (rentSource === "research" && rentResearch.status === "ok") {
     if (rentResearch.result.confidence !== CONFIDENCE_PASS_BAR) {
       reasons.push(
@@ -110,6 +138,18 @@ export function evaluateConfidenceGate(
       needsRentRefinement = true;
     }
   }
+  // rentSource === "customer": deliberately NOT a gate finding at all (as of
+  // 2026-09-03, incident GRR-MTKIHYO2). The owner's explicit call: when the
+  // buyer supplies their own rent number, it is used for the math regardless
+  // of how the buyer rated their own confidence in it — "moderate" or "low"
+  // buyer self-rating is not something any amount of re-running research can
+  // fix (it was never a research finding to begin with), so it must never
+  // hold a job for review or burn a confidence-refinement round. Research
+  // still runs (see processSubmission.ts — rentResearch is never skipped
+  // just because the buyer supplied their own number) and its findings are
+  // surfaced to the buyer as evidence via rentAccuracyNarrative.ts, not as a
+  // pass/fail gate. See the note on the (now-unused, `_`-prefixed) rent
+  // confidence parameter above for why it's kept rather than removed.
 
   return { passed: reasons.length === 0, reasons, needsPropertyRefinement, needsRentRefinement };
 }

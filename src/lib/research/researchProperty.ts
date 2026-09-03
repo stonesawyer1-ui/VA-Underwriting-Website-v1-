@@ -99,9 +99,10 @@ return null with an explanation, don't fabricate a plausible-sounding number.
 Write every note in professional, plain-language business prose for a homebuyer client, as a
 real-estate/tax analyst would — describe only the property, tax rules, and insurance market
 findings. Never mention web searches, tools, retries, technical limitations, or anything about
-how you performed the research. If a value genuinely could not be confirmed, state that as a
-data finding (e.g. "the current rate could not be confirmed from an official source"), not as an
-explanation of a technical process.
+how you performed the research - no mentions of "web search," "tool budget," "tool-use limit,"
+being "exhausted," a "session," an "API," or similar internal/technical language. If a value
+genuinely could not be confirmed, state that as a data finding (e.g. "the current rate could not
+be confirmed from an official source"), not as an explanation of a technical process.
 
 Valid JSON only: never use a literal double-quote character inside a string value (e.g. when quoting a phrase from a source) - use single quotes ' ' instead, since an embedded " breaks the surrounding string.
 

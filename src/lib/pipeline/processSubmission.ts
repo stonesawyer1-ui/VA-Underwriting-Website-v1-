@@ -12,6 +12,8 @@ import { resolveTaxInputs, resolveYearlyInsurance, resolveMonthlyRent, buildEngi
 import { computeUnderwriting } from "@/lib/workbook/computeUnderwriting";
 import { fillWorkbookXlsx } from "@/lib/workbook/fillWorkbookXlsx";
 import { evaluateConfidenceGate, type ConfidenceGateResult } from "@/lib/confidenceGate";
+import { buildRentAccuracyNarrative } from "@/lib/research/rentAccuracyNarrative";
+import { sanitizeReportText } from "@/lib/research/sanitizeReportText";
 import { getTaxDisclaimer } from "@/lib/underwriting/taxDisclaimers";
 import { propertyTypeLabel } from "@/lib/underwriting/defaults";
 import { UnderwritingReportDocument, type UnderwritingReportData } from "@/lib/pdf/UnderwritingReportDocument";
@@ -109,6 +111,30 @@ export function bumpRefinementCounters(counters: RefinementCounters): void {
   if (counters.pendingRentRefinement) {
     counters.rentRefinementRound = (counters.rentRefinementRound ?? 0) + 1;
   }
+}
+
+/**
+ * Whether a below-bar gate result is worth spending another confidence
+ * round on at all — extracted as its own pure, exported function (2026-09-03
+ * gate audit, incident GRR-MTKIHYO2, alongside applyTargetedRefinementDecision/
+ * bumpRefinementCounters above) so this decision is directly testable
+ * without constructing a full job/research mock.
+ *
+ * True only when at least one of the gate's own needsPropertyRefinement /
+ * needsRentRefinement flags is set AND rounds remain under
+ * MAX_CONFIDENCE_ROUNDS. Both flags false means every current failure is
+ * structurally unfixable by research (see confidenceGate.ts's per-branch
+ * comments — a buyer-input gap, or a placeholder fallback with no data
+ * source left to query) — retrying would just reproduce the identical
+ * result up to MAX_CONFIDENCE_ROUNDS times before landing on the exact same
+ * hold, which is the wasted-rounds bug behind incident GRR-MTKIHYO2.
+ */
+export function isConfidenceRetryWorthwhile(
+  gate: Pick<ConfidenceGateResult, "needsPropertyRefinement" | "needsRentRefinement">,
+  roundsCompleted: number,
+): boolean {
+  const anythingRetryable = gate.needsPropertyRefinement || gate.needsRentRefinement;
+  return anythingRetryable && roundsCompleted < MAX_CONFIDENCE_ROUNDS;
 }
 
 /**
@@ -258,7 +284,16 @@ export async function processSubmission(job: ProcessingJob): Promise<ProcessSubm
 
   if (!gate.passed) {
     const roundsCompleted = refinementRound + 1; // this round just ran
-    if (roundsCompleted < MAX_CONFIDENCE_ROUNDS) {
+    // 2026-09-03 (incident GRR-MTKIHYO2): a round is only worth retrying
+    // when at least one failing reason is something a broadened search
+    // could plausibly fix — see confidenceGate.ts's per-branch reasoning for
+    // exactly which reasons set these flags and why. When neither flag is
+    // set, every current failure is structurally unfixable by research (a
+    // buyer-input gap, or a placeholder fallback with no data source left to
+    // query), so retrying would just reproduce the identical result
+    // MAX_CONFIDENCE_ROUNDS times before landing on the same hold.
+    const worthRetrying = isConfidenceRetryWorthwhile(gate, roundsCompleted);
+    if (worthRetrying) {
       // A real finding, but not yet an exhausted one — keep working the
       // problem instead of giving up on the first below-bar answer. The
       // next round (see runJobAttempt) reruns research with a broader
@@ -283,15 +318,20 @@ export async function processSubmission(job: ProcessingJob): Promise<ProcessSubm
       return "needs_confidence_retry";
     }
 
-    // Genuinely exhausted MAX_CONFIDENCE_ROUNDS worth of real search effort
-    // and still below the bar — this is now a real data-quality finding, not
-    // a fault, so it's charged and finalized exactly like the pre-existing
-    // behavior, just with an honest count of how much extra effort already
-    // went into it.
-    console.log("[processSubmission] Confidence gate exhausted after full refinement effort — genuine hold for review", {
+    // Either genuinely exhausted MAX_CONFIDENCE_ROUNDS worth of real search
+    // effort and still below the bar, or — as of 2026-09-03 — nothing about
+    // this round's failure(s) was retryable in the first place (worthRetrying
+    // was false; see the comment above). Either way this is now a real
+    // data-quality finding, not a fault, so it's charged and finalized
+    // exactly like the pre-existing behavior, just with an honest count of
+    // how much extra effort already went into it (0 extra rounds for the
+    // structurally-unfixable case, since retrying never had a chance of
+    // changing the outcome).
+    console.log("[processSubmission] Confidence gate below bar and not (further) retryable — genuine hold for review", {
       referenceId,
       roundsCompleted,
       reasons: gate.reasons,
+      worthRetrying,
     });
     await chargeAllowanceForJob(job);
     await sendHoldForReviewNotice({
@@ -356,6 +396,26 @@ async function buildAndSendReport(args: {
     console.error("[processSubmission] Memo narrative research failed — proceeding without it", narrative.message);
   }
 
+  // Rent-accuracy evidence (2026-09-03, owner's policy decision on
+  // GRR-MTKIHYO2): only meaningful when the buyer supplied their own rent
+  // figure — that's the only case where there's a buyer-reported number to
+  // evidence-check against research's own comps. When rent came from
+  // research or a regional average, the existing rentConfidenceLabel below
+  // already says what research thinks of its own number, so there's nothing
+  // additional to corroborate. Passed through sanitizeReportText even though
+  // rentAccuracyNarrative.ts only ever builds this from research's
+  // structured fields (never free-form model prose) — defense in depth in
+  // case a future edit to that builder ever inlines a raw research string
+  // directly.
+  const rentAccuracyNarrative =
+    rent.source === "customer"
+      ? sanitizeReportText(
+          buildRentAccuracyNarrative(engineInputs.property.expectedMonthlyRent, rentResearch),
+          "Research evidence for this rent figure was not available.",
+          "rentAccuracyNarrative",
+        )
+      : null;
+
   const reportData: UnderwritingReportData = {
     propertyAddressLine: `${formData.property.address}, ${formData.property.city}, ${formData.property.state} ${formData.property.zip}`,
     county: formData.property.county,
@@ -397,6 +457,7 @@ async function buildAndSendReport(args: {
               rent.comparison.researchEstimate ? " — at least as confident as area market research, shown below" : ""
             }`,
     rentComparison: rent.comparison,
+    rentAccuracyNarrative,
     rentAfterVacancy: numberOf("rentAfterVacancy"),
     moneyLeftOverMonthly: numberOf("moneyLeftOverMonthly"),
     moneyLeftOverYearly: numberOf("moneyLeftOverYearly"),

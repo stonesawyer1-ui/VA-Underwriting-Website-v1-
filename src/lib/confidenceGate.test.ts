@@ -51,11 +51,6 @@ describe("evaluateConfidenceGate — 90% (high-only) bar", () => {
     expect(result.passed).toBe(false);
   });
 
-  it("requires high (not moderate) buyer-supplied rent confidence too", () => {
-    const result = evaluateConfidenceGate(okResearch, { status: "not_configured" }, "moderate", "research_estimate", "customer");
-    expect(result.passed).toBe(false);
-  });
-
   it("still fails on a bare default insurance estimate regardless of rent confidence", () => {
     const result = evaluateConfidenceGate(okResearch, rentResearchWith("high"), "high", "default_estimate", "research");
     expect(result.passed).toBe(false);
@@ -64,5 +59,69 @@ describe("evaluateConfidenceGate — 90% (high-only) bar", () => {
   it("still accepts a regional-average rent estimate on its own (never blocks on a data gap)", () => {
     const result = evaluateConfidenceGate(okResearch, { status: "not_configured" }, "low", "research_estimate", "regional_average");
     expect(result.passed).toBe(true);
+  });
+});
+
+describe("evaluateConfidenceGate — buyer-supplied rent (2026-09-03, GRR-MTKIHYO2 policy change)", () => {
+  it("passes on a buyer-supplied rent number even when the buyer self-rated it 'moderate'", () => {
+    const result = evaluateConfidenceGate(okResearch, { status: "not_configured" }, "moderate", "research_estimate", "customer");
+    expect(result.passed).toBe(true);
+    expect(result.reasons).toHaveLength(0);
+  });
+
+  it("passes on a buyer-supplied rent number even when the buyer self-rated it 'low'", () => {
+    const result = evaluateConfidenceGate(okResearch, { status: "not_configured" }, "low", "research_estimate", "customer");
+    expect(result.passed).toBe(true);
+  });
+
+  it("passes on a buyer-supplied rent number even when research's own comp search came back low confidence", () => {
+    // The real incident (GRR-MTKIHYO2): research's rent-comp search failed
+    // entirely and came back null/low, but the buyer supplied their own
+    // number — the gate must not hold on either signal.
+    const result = evaluateConfidenceGate(okResearch, rentResearchWith("low"), "moderate", "research_estimate", "customer");
+    expect(result.passed).toBe(true);
+  });
+
+  it("never sets needsRentRefinement for a buyer-supplied rent number (nothing for research to retry)", () => {
+    const result = evaluateConfidenceGate(okResearch, { status: "not_configured" }, "low", "research_estimate", "customer");
+    expect(result.needsRentRefinement).toBe(false);
+  });
+
+  it("a buyer-supplied rent number doesn't mask an unrelated genuine finding (insurance placeholder)", () => {
+    const result = evaluateConfidenceGate(okResearch, { status: "not_configured" }, "low", "default_estimate", "customer");
+    expect(result.passed).toBe(false);
+    expect(result.reasons.some((r) => r.toLowerCase().includes("insurance"))).toBe(true);
+  });
+});
+
+describe("evaluateConfidenceGate — retryability flags (2026-09-03 audit: which failures are worth burning a round on)", () => {
+  it("a bare default insurance placeholder does NOT set needsPropertyRefinement (buyer-input gap, not fixable by research)", () => {
+    const result = evaluateConfidenceGate(okResearch, rentResearchWith("high"), "high", "default_estimate", "research");
+    expect(result.passed).toBe(false);
+    expect(result.needsPropertyRefinement).toBe(false);
+  });
+
+  it("moderate research-sourced rent confidence still sets needsRentRefinement (a broader search genuinely might help)", () => {
+    const result = evaluateConfidenceGate(okResearch, rentResearchWith("moderate"), "high", "research_estimate", "research");
+    expect(result.passed).toBe(false);
+    expect(result.needsRentRefinement).toBe(true);
+  });
+
+  it("rentSource 'unavailable' sets needsRentRefinement (a successful broadened search would flip the source away from 'unavailable')", () => {
+    const result = evaluateConfidenceGate(
+      okResearch,
+      { status: "ok", cached: false, result: { low: null, base: null, high: null, confidence: "low", confidenceNote: "no comps found", comps: [], researchedAt: new Date().toISOString() } },
+      "high",
+      "research_estimate",
+      "unavailable",
+    );
+    expect(result.passed).toBe(false);
+    expect(result.needsRentRefinement).toBe(true);
+  });
+
+  it("a genuine no-data-at-all rent gap (no buyer number, no usable research, no regional fallback) still holds — this change is scoped to buyer-supplied rent only", () => {
+    const result = evaluateConfidenceGate(okResearch, { status: "not_configured" }, "high", "research_estimate", "unavailable");
+    expect(result.passed).toBe(false);
+    expect(result.reasons.some((r) => r.toLowerCase().includes("no rent figure"))).toBe(true);
   });
 });

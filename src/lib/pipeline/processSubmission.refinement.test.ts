@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { applyTargetedRefinementDecision, bumpRefinementCounters, type RefinementCounters } from "./processSubmission";
+import { applyTargetedRefinementDecision, bumpRefinementCounters, isConfidenceRetryWorthwhile, type RefinementCounters } from "./processSubmission";
+import { MAX_CONFIDENCE_ROUNDS } from "./config";
 
 /**
  * Regression coverage for a real bug caught in independent review
@@ -100,5 +101,34 @@ describe("targeted confidence-refinement counters", () => {
     applyTargetedRefinementDecision(counters, { needsPropertyRefinement: false, needsRentRefinement: true });
     expect(counters.pendingPropertyRefinement).toBe(false);
     expect(counters.pendingRentRefinement).toBe(true);
+  });
+});
+
+/**
+ * Regression coverage for the 2026-09-03 gate audit (incident GRR-MTKIHYO2):
+ * a below-bar gate result should only trigger another confidence round when
+ * something about the failure is actually retryable — otherwise it should
+ * go straight to a genuine hold on round 1 instead of burning the full
+ * MAX_CONFIDENCE_ROUNDS budget on a failure retrying can never fix.
+ */
+describe("isConfidenceRetryWorthwhile", () => {
+  it("is worthwhile on round 1 when property needs refinement", () => {
+    expect(isConfidenceRetryWorthwhile({ needsPropertyRefinement: true, needsRentRefinement: false }, 1)).toBe(true);
+  });
+
+  it("is worthwhile on round 1 when rent needs refinement", () => {
+    expect(isConfidenceRetryWorthwhile({ needsPropertyRefinement: false, needsRentRefinement: true }, 1)).toBe(true);
+  });
+
+  it("is NOT worthwhile when neither flag is set, even on round 1 — the structurally-unfixable case (e.g. buyer-input gap) resolves immediately instead of burning all 3 rounds", () => {
+    expect(isConfidenceRetryWorthwhile({ needsPropertyRefinement: false, needsRentRefinement: false }, 1)).toBe(false);
+  });
+
+  it("stops being worthwhile once MAX_CONFIDENCE_ROUNDS is reached even if something is still retryable", () => {
+    expect(isConfidenceRetryWorthwhile({ needsPropertyRefinement: true, needsRentRefinement: false }, MAX_CONFIDENCE_ROUNDS)).toBe(false);
+  });
+
+  it("is worthwhile one round short of the cap", () => {
+    expect(isConfidenceRetryWorthwhile({ needsPropertyRefinement: true, needsRentRefinement: false }, MAX_CONFIDENCE_ROUNDS - 1)).toBe(true);
   });
 });
