@@ -18,13 +18,58 @@
  * insight or market-trend note, which are shown to the customer with no
  * confidence gating at all.
  *
+ * A second real instance the same night (GRR-MTKIHYO2) wrote "the web_search
+ * tool budget for this session was exhausted... tool-use-limit error" —
+ * underscore and hyphen variants the original pattern's space-only
+ * separators missed. That one also happened to be routed around, but the
+ * near-miss is why the separator class below now allows a space, hyphen, or
+ * underscore anywhere a multi-word technical term could plausibly appear
+ * with any of those.
+ *
  * A hit here doesn't fail the request or hold the job for review — it swaps
  * in a clean, professional fallback sentence and logs a warning server-side
  * so drift in the underlying model's behavior stays visible without ever
  * reaching a customer.
  */
-const TECHNICAL_LANGUAGE_PATTERN =
-  /\b(web[- ]?search|search tool|the tool|tool use|api|json|http|time ?out|aborted|abort|retr(?:y|ies|ying)|rate limit|query strateg\w*|search strateg\w*|search attempt|the model|large language model|\bllm\b|claude|anthropic|token limit|sandbox|stack trace|null value|undefined|error message|exception)\b/i;
+const SEP = "[\\s_-]?";
+const TECHNICAL_LANGUAGE_PATTERN = new RegExp(
+  "\\b(" +
+    [
+      `web${SEP}search`,
+      `search${SEP}tool`,
+      "the tool",
+      `tool${SEP}use`,
+      `tool${SEP}budget`,
+      `tool${SEP}limit`,
+      "api",
+      "json",
+      "http",
+      `time${SEP}out`,
+      "aborted",
+      "abort",
+      "retr(?:y|ies|ying)",
+      `rate${SEP}limit`,
+      `query${SEP}strateg\\w*`,
+      `search${SEP}strateg\\w*`,
+      `search${SEP}attempt`,
+      `search${SEP}session`,
+      "this session",
+      "the model",
+      "large language model",
+      "\\bllm\\b",
+      "claude",
+      "anthropic",
+      `token${SEP}limit`,
+      "sandbox",
+      "stack trace",
+      "null value",
+      "undefined",
+      "error message",
+      "exception",
+    ].join("|") +
+    ")\\b",
+  "i",
+);
 
 /**
  * @param text The raw candidate text from a research model's response.
