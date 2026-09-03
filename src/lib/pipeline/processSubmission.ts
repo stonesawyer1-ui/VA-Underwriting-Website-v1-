@@ -585,6 +585,25 @@ async function recomputeResearchForJob(formData: ProcessingJob["formData"]) {
   return { isCondo, research, rentResearch, narrative, resolvedTax, insurance, rent };
 }
 
+/**
+ * Admin override for a job already finalized "held_for_review": re-runs
+ * research fresh (cached where the underlying calls cache) and recomputes
+ * the confidence gate on the new results, then sends the report only if the
+ * gate now genuinely passes outright. This is a general "recompute and send
+ * if it now genuinely passes" override, not a buyer-confidence-specific one
+ * — every gate reason must be resolved for this to proceed, so a hold caused
+ * by a real data gap (a bare insurance placeholder, unresolved rent) stays
+ * held until that gap is actually closed, while a hold caused by research
+ * that has since improved (e.g. a broader rent-comp search now clears the
+ * bar) can be cleared without a full confidence-refinement round.
+ *
+ * (Earlier versions of this function special-cased gate reasons naming the
+ * buyer's own rent confidence, back when that could independently fail the
+ * gate. As of 2026-09-03 a buyer-supplied rent number is never a gate
+ * finding at all — see confidenceGate.ts — so that case can no longer arise
+ * and the special-casing was removed; a plain "gate.passed" check now
+ * covers the same ground.)
+ */
 export async function forceCompleteHeldJob(
   referenceId: string,
 ): Promise<{ status: "sent" } | { status: "refused"; reason: string }> {
@@ -604,11 +623,10 @@ export async function forceCompleteHeldJob(
   const { isCondo, research, rentResearch, narrative, resolvedTax, insurance, rent } = await recomputeResearchForJob(formData);
   const gate = evaluateConfidenceGate(research, rentResearch, formData.rentEstimate.confidence, insurance.source, rent.source);
 
-  const isBuyerConfidenceReason = (reason: string): boolean => /confidence from the buyer/.test(reason);
-  if (!gate.passed && !gate.reasons.every(isBuyerConfidenceReason)) {
+  if (!gate.passed) {
     return {
       status: "refused",
-      reason: `Refusing — at least one gate reason is a genuine data gap, not just the buyer's own confidence rating: ${gate.reasons.join(" | ")}`,
+      reason: `Refusing — the confidence gate still fails on recomputed research: ${gate.reasons.join(" | ")}`,
     };
   }
 

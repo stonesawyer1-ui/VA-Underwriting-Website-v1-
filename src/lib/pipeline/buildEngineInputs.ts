@@ -163,7 +163,6 @@ export function resolveYearlyInsurance(data: UnderwritingFormData, research: Res
 export type RentSource = "customer" | "research" | "regional_average" | "unavailable";
 
 type RentConfidence = "low" | "moderate" | "high";
-const CONFIDENCE_RANK: Record<RentConfidence, number> = { low: 1, moderate: 2, high: 3 };
 
 /** Both figures, shown side by side in the report regardless of which one the underwriting math actually uses — so the buyer can see their own number next to what the area's active listings support. */
 export type RentComparison = {
@@ -173,13 +172,28 @@ export type RentComparison = {
 
 /**
  * When the buyer supplied their own estimate AND research found a usable
- * number, use whichever one is actually more confident rather than always
- * defaulting to the buyer's figure — a buyer's own guess rated "moderate"
- * shouldn't automatically outrank a "high"-confidence set of active area
- * comps, and vice versa. Ties keep the buyer's number (the original
- * default), since it reflects real knowledge (a signed lease, current
- * tenant, etc.) that a tied confidence label doesn't distinguish from area
- * research on its own.
+ * number, only switch to research's figure when research's own confidence is
+ * "high" — i.e. high enough to actually clear confidenceGate.ts's pass bar
+ * on its own. Otherwise keep the buyer's number.
+ *
+ * This is deliberately NOT "whichever confidence rank is higher" anymore
+ * (that was the pre-2026-09-03 rule, and it's a bug as of the same-day
+ * change below): confidenceGate.ts now never gates a buyer-sourced rent
+ * number at all, regardless of the buyer's own self-rated confidence, but a
+ * research-sourced number still must be "high" confidence to pass. Ranking
+ * research "moderate" above a buyer "low" and swapping the source to
+ * "research" used to take a rent number that would have sailed through
+ * ungated (buyer-sourced, never gated) and hand it to the gate instead —
+ * where "moderate" fails, triggering a real, paid, multi-minute
+ * confidence-refinement retry that a buyer-sourced number would never have
+ * hit. Requiring research to be "high" on its own means the override only
+ * ever trades the buyer's number for one that's actually good enough to
+ * stand on its own merits, never for one that just outranks the buyer's
+ * self-rating on paper while still failing the gate. See GRR-MTKIHYO2.
+ *
+ * Ties (buyer "high", research "high") and every other combination where
+ * research isn't "high" keep the buyer's number (the original default),
+ * since it reflects real knowledge (a signed lease, current tenant, etc.).
  *
  * With only one of the two available, that one is used as before. Without
  * either, fall back to a regional rent-to-price estimate tied to this
@@ -207,7 +221,7 @@ export function resolveMonthlyRent(
   };
 
   if (buyerMonthly !== null && researchMonthly !== null && researchConfidence) {
-    if (CONFIDENCE_RANK[researchConfidence] > CONFIDENCE_RANK[buyerConfidence]) {
+    if (researchConfidence === "high" && buyerConfidence !== "high") {
       return { monthly: researchMonthly, source: "research", comparison };
     }
     return { monthly: buyerMonthly, source: "customer", comparison };

@@ -211,7 +211,7 @@ export async function sendUnderwritingReportToCustomer(params: {
 /**
  * Owner-facing early-warning alert: fired exactly once per job, the moment
  * it's been sitting "processing" — not yet delivered, not yet held for
- * review, still genuinely working the problem — for more than an hour
+ * review, still genuinely working the problem — past the alert threshold
  * (see PAST_HOUR_ALERT_THRESHOLD_MS in pipeline/config.ts and the check in
  * process-pending/route.ts, which is the only caller). Added 2026-09-03 at
  * the owner's explicit request: they want to know a submission is running
@@ -223,9 +223,9 @@ export async function sendUnderwritingReportToCustomer(params: {
  *
  * Distinct from sendStillProcessingNotice, which is a single, generic,
  * customer-facing reassurance sent once a submission first needs more than
- * one attempt — this one is owner-only, fires later (an hour in, not on the
- * first retry), and carries the actual diagnostic snapshot (attempts,
- * confidence rounds, which retry kind it's waiting on) the owner would need
+ * one attempt — this one is owner-only, fires later (well into the retry
+ * budget, not on the first retry), and carries the actual diagnostic
+ * snapshot (attempts, confidence rounds, which retry kind it's waiting on) the owner would need
  * to hand to Claude for a real investigation, the way tonight's incident
  * reports have all started from a referenceId and a "what happened" ask.
  */

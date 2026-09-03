@@ -91,14 +91,28 @@ export const ANTHROPIC_CLIENT_TIMEOUT_MS = 650_000;
  * email (see sendPastHourAlertEmail, checked in process-pending/route.ts).
  * Added 2026-09-03 at the owner's explicit request: with the
  * confidence-seeking / infra-backoff redesign, a job can now legitimately
- * keep retrying for a long time (see MAX_INFRA_ATTEMPTS's comment — up to
- * ~1.5-2 hours in the worst case) before ever reaching a terminal state, so
+ * keep retrying for a long time before ever reaching a terminal state, so
  * "wait for it to finish, then get notified" isn't good enough anymore —
  * the owner wants to know it's running long WHILE it's still in flight, so
  * they can bring the referenceId to Claude for a real-time investigation
  * rather than only after the fact.
+ *
+ * Retuned the same day (still 2026-09-03) alongside the MAX_INFRA_ATTEMPTS
+ * ceiling cut from ~1.5-2 hours down to ~1 hour (see that constant's own
+ * worst-case arithmetic): this threshold has to stay BELOW the new ceiling
+ * with real margin, or the "early warning" fires at or after the moment a
+ * stuck job has already given up and finalized held_for_review — useless as
+ * an early-warning signal, since by then the owner would already have
+ * gotten (or be about to get) the terminal hold notification instead. 45
+ * minutes is ~78% of the ~57.5-minute pure-backoff worst case computed
+ * below (and ~75% of the realistic ~60-minute worst case once cron-sweep
+ * detection latency is folded in) — squarely in the "70-80% of the way to
+ * the ceiling" range that leaves the owner a real window (about 15 real
+ * minutes, several more retry attempts) to see the alert and act while the
+ * job is still actively retrying, not just a few seconds' notice before it
+ * would have finalized on its own anyway.
  */
-export const PAST_HOUR_ALERT_THRESHOLD_MS = 60 * 60 * 1000;
+export const PAST_HOUR_ALERT_THRESHOLD_MS = 45 * 60 * 1000;
 
 /**
  * How often Vercel Cron invokes /api/process-pending (see vercel.json's
@@ -135,25 +149,44 @@ export const STALE_THRESHOLD_MS = 12 * 60 * 1000;
  * Raised from the original 5 (a ~24-real-minute budget) specifically because
  * the owner's design goal is that a slow API or a transient outage should
  * never look like a data-quality finding just because a fixed retry count
- * ran out on a short timer. Combined with the exponential backoff in
- * retryPolicy.ts (base 30s, capped at 5min between attempts), 20 attempts
- * gives a genuine outage roughly 1.5-2 real hours to clear before a human
- * gets pulled in — long enough that "the API had a bad five minutes" almost
- * never reaches this ceiling, while a truly permanent break (e.g. the API
- * key itself got revoked, which will never self-heal no matter how many
- * times it's retried) still surfaces to a human in a bounded, predictable
- * time instead of retrying invisibly forever. See the design summary in
+ * ran out on a short timer. That first raise (to 20 attempts) overshot,
+ * though: combined with the exponential backoff below (base 30s, capped at
+ * 5min), 20 attempts gave a genuine outage roughly 1.5-2 real hours to clear
+ * before a human got pulled in — resilient, but longer than the owner wants
+ * a customer's submission to sit unresolved. Retuned 2026-09-03 to bring the
+ * worst case down to roughly 1 hour while still giving a real transient blip
+ * multiple rounds to clear on its own.
+ *
+ * Worst-case arithmetic (15 attempts = 14 backoff delays between them,
+ * exponentialBackoffMs(k, 30_000, 300_000) for k = 1..14 — see
+ * retryPolicy.ts's isBackoffElapsed, which spaces attempt k+1 by this much
+ * after attempt k):
+ *   k=1:  30s   (30_000 * 2^0)
+ *   k=2:  60s   (30_000 * 2^1)
+ *   k=3:  120s  (30_000 * 2^2)
+ *   k=4:  240s  (30_000 * 2^3)
+ *   k=5..14: 300s each (30_000 * 2^4 = 480s would exceed the 300s cap, so
+ *            every remaining delay is capped at 300s) — 10 delays * 300s = 3000s
+ *   Total: 30 + 60 + 120 + 240 + 3000 = 3450s ≈ 57.5 minutes of pure backoff.
+ * Real elapsed time runs a bit past that — each attempt can itself take up
+ * to RESEARCH_HARD_DEADLINE_MS-scale time before failing, and the sweep only
+ * checks once per CRON_SWEEP_INTERVAL_MS (60s) tick, adding up to another
+ * ~60s of detection latency per retry — landing the realistic worst case
+ * close to the ~1 hour target (not 30 minutes, not 90) rather than exactly
+ * 57.5 minutes on the nose. A truly permanent break (e.g. the API key itself
+ * got revoked, which will never self-heal no matter how many times it's
+ * retried) still surfaces to a human in this same bounded, predictable time
+ * instead of retrying invisibly forever. See the design summary in
  * processSubmission.ts for why "retry forever, no ceiling at all" was
  * considered and rejected.
  *
- * Trade-off worth naming explicitly: this deliberately abandons the earlier
+ * Trade-off worth naming explicitly: this still abandons the original
  * "under 25 minutes" delivery target for the rare genuine-outage case, in
  * exchange for never mislabeling an infrastructure problem as a
- * data-quality finding. The common (successful) case is unaffected — it's
- * only a sustained, multi-attempt outage that now takes up to ~2 hours
- * instead of ~24 minutes before a human is looped in.
+ * data-quality finding — it just no longer costs a customer up to 2 hours
+ * to find that out. The common (successful) case is unaffected either way.
  */
-export const MAX_INFRA_ATTEMPTS = 20;
+export const MAX_INFRA_ATTEMPTS = 15;
 
 /** Base delay before the first infra-fault retry; see nextBackoffDelayMs. */
 export const INFRA_BACKOFF_BASE_MS = 30_000;

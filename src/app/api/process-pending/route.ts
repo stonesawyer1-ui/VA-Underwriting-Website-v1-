@@ -30,9 +30,11 @@ export const maxDuration = 600;
  * time.
  *
  * Independently of those two gates, every tick also checks each pending
- * job's total age against PAST_HOUR_ALERT_THRESHOLD_MS (config.ts) and
- * sends the owner a one-time alert email if a job has been "processing"
- * for over an hour without resolving — see sendPastHourAlertEmail. This is
+ * job's total age against PAST_HOUR_ALERT_THRESHOLD_MS (config.ts — as of
+ * the 2026-09-03 retune, 45 minutes, not a literal hour; see that
+ * constant's own comment for why) and sends the owner a one-time early-
+ * warning alert email if a job has been "processing" that long without
+ * resolving — see sendPastHourAlertEmail. This is
  * deliberately unconditional (checked even on a tick that's about to skip
  * the job for either retry gate above) since a job can legitimately still
  * be mid-attempt or mid-backoff past that mark, and the point is to catch
@@ -85,7 +87,7 @@ async function handleSweep(request: NextRequest) {
 
       // Checked unconditionally, before either retry gate below — a job
       // can legitimately still be mid-attempt or mid-backoff past the
-      // one-hour mark (that's the whole point of the confidence-seeking /
+      // alert threshold (that's the whole point of the confidence-seeking /
       // infra-backoff redesign), and the owner wants to know it's running
       // long WHILE it's still in flight, not only once it finally resolves.
       // Fires once per job (see pastHourAlertSent on ProcessingJob).

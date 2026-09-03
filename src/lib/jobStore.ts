@@ -97,7 +97,7 @@ export type ProcessingJob = {
   /** See PendingRetryKind. */
   pendingRetryKind: PendingRetryKind;
   /**
-   * Whether the one-time "this has been processing for over an hour" owner
+   * Whether the one-time "this has been processing for a while" owner
    * alert (sendPastHourAlertEmail) has already gone out — sent once per
    * job, not on every sweep tick past the threshold. See
    * PAST_HOUR_ALERT_THRESHOLD_MS in pipeline/config.ts. Missing on any job

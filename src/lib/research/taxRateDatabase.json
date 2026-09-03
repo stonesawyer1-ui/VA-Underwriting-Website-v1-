@@ -84,6 +84,331 @@
       ],
       "verifiedAt": "2026-09-02",
       "source": "Tex. Const. art. VIII, sec. 1-b / Prop 4 (2023) (homestead exemption amount only -- see _confidence_note for what is NOT verified)"
+    },
+    "NC|28303": {
+      "_confidence_note": "LOW/NO confidence on a specific current combined rate for Cumberland County (Fayetteville / Fort Bragg-Liberty). This pass had no reliable authoritative source for the current-year Cumberland County + City of Fayetteville combined rate, so combinedTaxRatePct is left null rather than guessed -- same treatment as the existing Moore County entry's caveat, applied here with even less confidence since no aggregator figure was found at all. Verify against Cumberland County's own published tax rate schedule (https://www.cumberlandcountync.gov) before use. Entry is currently inert (falls through to live research) until a verified rate is added.",
+      "county": "Cumberland County, NC (Fayetteville)",
+      "taxModel": "flat_rate",
+      "taxFields": {
+        "combinedTaxRatePct": { "value": null, "confidence": "Estimated", "source": null }
+      },
+      "taxInsights": [
+        {
+          "note": "North Carolina applies one tax rate regardless of owner-occupancy status -- there is no separate rental/investor assessment ratio or homestead exemption differential the way South Carolina or Texas have. Not tax or legal advice; confirm with the county assessor.",
+          "source": null
+        },
+        {
+          "note": "Fort Bragg (redesignated Fort Liberty, then reverted to Fort Bragg in 2025) is the area's dominant employer and driver of rental demand; a Fayetteville parcel's bill combines Cumberland County's rate with the City of Fayetteville's own municipal rate if inside city limits, plus any fire district fee outside it. Not tax or legal advice; confirm the full combined rate with the Cumberland County Tax Administrator.",
+          "source": null
+        }
+      ],
+      "verifiedAt": "2026-09-03",
+      "source": "Not yet verified -- see _confidence_note"
+    },
+    "NC|28376": {
+      "_confidence_note": "LOW/NO confidence on a specific current combined rate for Hoke County (Raeford, also near Fort Bragg-Liberty). Same treatment as the Cumberland County entry above -- rate left null pending a verified source.",
+      "county": "Hoke County, NC (Raeford)",
+      "taxModel": "flat_rate",
+      "taxFields": {
+        "combinedTaxRatePct": { "value": null, "confidence": "Estimated", "source": null }
+      },
+      "taxInsights": [
+        {
+          "note": "North Carolina applies one tax rate regardless of owner-occupancy status. Not tax or legal advice; confirm with the county assessor.",
+          "source": null
+        },
+        {
+          "note": "Hoke County borders the western edge of the Fort Bragg-Liberty installation and is a common rental market for the base's off-post population. Verify the combined county + any municipal rate with the Hoke County Tax Office before this feeds a customer report.",
+          "source": null
+        }
+      ],
+      "verifiedAt": "2026-09-03",
+      "source": "Not yet verified -- see _confidence_note"
+    },
+    "TX|76542": {
+      "_confidence_note": "HIGH confidence on the $100,000 state-mandated school-district homestead exemption -- same statewide statutory fact as the existing Harris County entry (Tex. Const. art. VIII, sec. 1-b), not specific to Bell County. LOW/NO confidence on the actual city/ISD/county tax rates for Killeen -- these vary by which specific ISD (Killeen ISD vs. others) and municipal boundary a parcel falls in, and this pass had no reliable current-year source. Entry is currently inert (falls through to live research) until the three rate fields are filled in.",
+      "county": "Bell County, TX (Killeen)",
+      "taxModel": "homestead_exemption",
+      "taxFields": {
+        "schoolHomesteadExemption": {
+          "value": 100000,
+          "confidence": "Confirmed",
+          "source": "Texas Prop 4 (2023) / Tex. Const. art. VIII, sec. 1-b -- statewide school-district homestead exemption of $100,000 of appraised value for an owner-occupied primary residence; does not apply to a non-owner-occupied rental."
+        },
+        "cityTaxRatePct": { "value": null, "confidence": "Estimated", "source": null },
+        "schoolIsdTaxRatePct": { "value": null, "confidence": "Estimated", "source": null },
+        "countyTaxRatePct": { "value": null, "confidence": "Estimated", "source": null }
+      },
+      "taxInsights": [
+        {
+          "note": "Killeen (Bell County) sits directly against Fort Hood/Cavazos and is one of this product's core rental markets. Converting an owner-occupied home to a rental removes the $100,000 school homestead exemption (and any local homestead exemption) from the taxable value, meaningfully raising the tax bill on conversion. Not tax or legal advice; confirm with the Bell County Appraisal District.",
+          "source": null
+        },
+        {
+          "note": "City, Killeen ISD, and county tax rates were not verified for this pass and are left blank. Look up the current combined rate for the exact parcel via the Bell County Appraisal District before this feeds a customer report.",
+          "source": null
+        }
+      ],
+      "verifiedAt": "2026-09-03",
+      "source": "Tex. Const. art. VIII, sec. 1-b / Prop 4 (2023) (homestead exemption amount only -- see _confidence_note)"
+    },
+    "TX|76522": {
+      "_confidence_note": "Same treatment as the Bell County (Killeen) entry above -- HIGH confidence on the statewide $100,000 homestead exemption fact, LOW/NO confidence on Coryell County's specific city/ISD/county rates, left null.",
+      "county": "Coryell County, TX (Copperas Cove)",
+      "taxModel": "homestead_exemption",
+      "taxFields": {
+        "schoolHomesteadExemption": {
+          "value": 100000,
+          "confidence": "Confirmed",
+          "source": "Texas Prop 4 (2023) / Tex. Const. art. VIII, sec. 1-b -- statewide school-district homestead exemption of $100,000 of appraised value for an owner-occupied primary residence; does not apply to a non-owner-occupied rental."
+        },
+        "cityTaxRatePct": { "value": null, "confidence": "Estimated", "source": null },
+        "schoolIsdTaxRatePct": { "value": null, "confidence": "Estimated", "source": null },
+        "countyTaxRatePct": { "value": null, "confidence": "Estimated", "source": null }
+      },
+      "taxInsights": [
+        {
+          "note": "Copperas Cove (Coryell County) is another primary off-post rental market for Fort Hood/Cavazos. Converting to a rental removes the $100,000 school homestead exemption. Not tax or legal advice; confirm with the Coryell County Appraisal District.",
+          "source": null
+        },
+        {
+          "note": "City, Copperas Cove ISD, and county tax rates were not verified for this pass and are left blank. Look up the current combined rate via the Coryell County Appraisal District before this feeds a customer report.",
+          "source": null
+        }
+      ],
+      "verifiedAt": "2026-09-03",
+      "source": "Tex. Const. art. VIII, sec. 1-b / Prop 4 (2023) (homestead exemption amount only -- see _confidence_note)"
+    },
+    "TX|79924": {
+      "_confidence_note": "Same treatment as the other new Texas entries -- HIGH confidence on the statewide $100,000 homestead exemption fact, LOW/NO confidence on El Paso County's specific city/ISD/county rates, left null.",
+      "county": "El Paso County, TX (El Paso, near Fort Bliss)",
+      "taxModel": "homestead_exemption",
+      "taxFields": {
+        "schoolHomesteadExemption": {
+          "value": 100000,
+          "confidence": "Confirmed",
+          "source": "Texas Prop 4 (2023) / Tex. Const. art. VIII, sec. 1-b -- statewide school-district homestead exemption of $100,000 of appraised value for an owner-occupied primary residence; does not apply to a non-owner-occupied rental."
+        },
+        "cityTaxRatePct": { "value": null, "confidence": "Estimated", "source": null },
+        "schoolIsdTaxRatePct": { "value": null, "confidence": "Estimated", "source": null },
+        "countyTaxRatePct": { "value": null, "confidence": "Estimated", "source": null }
+      },
+      "taxInsights": [
+        {
+          "note": "Northeast El Paso is the primary off-post community for Fort Bliss. Converting to a rental removes the $100,000 school homestead exemption. Not tax or legal advice; confirm with the El Paso Central Appraisal District.",
+          "source": null
+        },
+        {
+          "note": "City, El Paso ISD (or the applicable ISD for the specific parcel -- El Paso County has several), and county tax rates were not verified for this pass and are left blank. Look up the current combined rate via the El Paso Central Appraisal District before this feeds a customer report.",
+          "source": null
+        }
+      ],
+      "verifiedAt": "2026-09-03",
+      "source": "Tex. Const. art. VIII, sec. 1-b / Prop 4 (2023) (homestead exemption amount only -- see _confidence_note)"
+    },
+    "SC|29209": {
+      "_confidence_note": "HIGH confidence on the 4%/6% assessment-ratio split itself -- the same statewide S.C. Const. art. X, sec. 1 provision as the existing Charleston County entry, not specific to Richland County. LOW/NO confidence on a specific current millage rate for Richland County -- varies by tax district (City of Columbia vs. unincorporated county vs. special districts) and this pass had no reliable current-year source, so the three millage fields are left null. Entry is currently inert until they're filled in.",
+      "county": "Richland County, SC (Columbia, near Fort Jackson)",
+      "taxModel": "assessment_ratio",
+      "taxFields": {
+        "ownerAssessmentRatioPct": {
+          "value": 4,
+          "confidence": "Confirmed",
+          "source": "S.C. Const. art. X, sec. 1 -- owner-occupied legal-residence property is assessed at 4% of fair market value statewide (requires the owner to file a legal-residence exemption application)."
+        },
+        "investorAssessmentRatioPct": {
+          "value": 6,
+          "confidence": "Confirmed",
+          "source": "S.C. Const. art. X, sec. 1 -- all other real property, including non-owner-occupied rental property, is assessed at 6% of fair market value statewide."
+        },
+        "totalMillageRate": { "value": null, "confidence": "Estimated", "source": null },
+        "schoolOperatingMillage": { "value": null, "confidence": "Estimated", "source": null },
+        "schoolBondMillage": { "value": null, "confidence": "Estimated", "source": null }
+      },
+      "taxInsights": [
+        {
+          "note": "South Carolina's 4% (owner-occupied) vs 6% (rental/investment) assessment ratio means a rental's taxable assessed value runs roughly 50% higher than an otherwise-identical owner-occupied property in the same district -- worth flagging clearly for a buyer converting a Fort Jackson-area primary residence to a rental. Not tax or legal advice; confirm with the county assessor.",
+          "source": null
+        },
+        {
+          "note": "Actual millage was not verified for this pass and is left blank -- it varies by the specific city/unincorporated/special-district zone within Richland County and by year. Look up the current combined millage for the exact parcel's tax district via the Richland County Auditor before this feeds a customer report.",
+          "source": null
+        }
+      ],
+      "verifiedAt": "2026-09-03",
+      "source": "S.C. Const. art. X, sec. 1 (assessment ratios only -- see _confidence_note for what is NOT verified)"
+    },
+    "GA|31907": {
+      "_confidence_note": "LOW/NO confidence on a specific current effective tax rate for Muscogee County. This pass had no reliable authoritative source for a current-year combined city/county/school effective rate, so estimatedEffectiveTaxRatePct is left null. The 40% statewide assessment-ratio fact in the taxInsight below is a stable Georgia statutory provision (O.C.G.A. sec. 48-5-7) -- informational context only, since Georgia is not currently mapped to this codebase's assessment_ratio model (that model, and its owner/rental split, is wired specifically to South Carolina's structure -- see constants.ts) and applying it here without adaptation risks a materially wrong number. Entry is currently inert until a verified effective rate is added.",
+      "county": "Muscogee County, GA (Columbus, near Fort Benning/Moore)",
+      "taxModel": "fallback",
+      "taxFields": {
+        "estimatedEffectiveTaxRatePct": { "value": null, "confidence": "Estimated", "source": null }
+      },
+      "taxInsights": [
+        {
+          "note": "Georgia assesses real property at 40% of fair market value statewide (O.C.G.A. sec. 48-5-7) before the local millage rate is applied -- a structural fact, not a specific dollar figure, and not directly usable by this codebase's current fallback tax model (a single effective-rate percentage), so it's noted here for context rather than converted into a field value. Not tax or legal advice; confirm with the Muscogee County Tax Assessor.",
+          "source": null
+        },
+        {
+          "note": "Columbus-Muscogee has a consolidated city-county government, so there's no separate city tax layer on top of the county rate the way there is in most other states -- but school district millage and any special district fees still apply separately. Verify the current combined rate with the Muscogee County Tax Commissioner before this feeds a customer report.",
+          "source": null
+        }
+      ],
+      "verifiedAt": "2026-09-03",
+      "source": "Not yet verified -- see _confidence_note"
+    },
+    "GA|31313": {
+      "_confidence_note": "Same treatment as the Muscogee County entry above -- LOW/NO confidence on a specific current effective rate for Liberty County, left null.",
+      "county": "Liberty County, GA (Hinesville, near Fort Stewart)",
+      "taxModel": "fallback",
+      "taxFields": {
+        "estimatedEffectiveTaxRatePct": { "value": null, "confidence": "Estimated", "source": null }
+      },
+      "taxInsights": [
+        {
+          "note": "Georgia assesses real property at 40% of fair market value statewide (O.C.G.A. sec. 48-5-7) before the local millage rate is applied -- not directly usable by this codebase's current fallback (single effective-rate) tax model, so noted here for context only. Not tax or legal advice; confirm with the Liberty County Tax Assessor.",
+          "source": null
+        },
+        {
+          "note": "Hinesville is the primary off-post rental market for Fort Stewart. Verify the current combined county/city/school rate with the Liberty County Tax Commissioner before this feeds a customer report.",
+          "source": null
+        }
+      ],
+      "verifiedAt": "2026-09-03",
+      "source": "Not yet verified -- see _confidence_note"
+    },
+    "WA|98499": {
+      "_confidence_note": "LOW/NO confidence on a specific current effective tax rate for Pierce County. Washington caps aggregate regular-levy growth at 1%/year statewide (a structural fact), but the actual current combined rate for a specific Lakewood-area parcel depends on overlapping city/county/school/fire and other special-purpose district levies this pass could not verify. Left null.",
+      "county": "Pierce County, WA (Lakewood, adjacent to Joint Base Lewis-McChord)",
+      "taxModel": "fallback",
+      "taxFields": {
+        "estimatedEffectiveTaxRatePct": { "value": null, "confidence": "Estimated", "source": null }
+      },
+      "taxInsights": [
+        {
+          "note": "Washington has no state income tax and relies more heavily on property tax than some neighboring states, but state law caps most taxing districts' regular levy growth at 1% per year (RCW 84.55), which tends to keep year-over-year increases predictable even though the base rate itself was not verified here. Not tax or legal advice; confirm with the Pierce County Assessor-Treasurer.",
+          "source": null
+        },
+        {
+          "note": "Lakewood, DuPont, and University Place are common off-post rental markets for Joint Base Lewis-McChord. Verify the current combined rate for the exact parcel via the Pierce County Assessor-Treasurer before this feeds a customer report.",
+          "source": null
+        }
+      ],
+      "verifiedAt": "2026-09-03",
+      "source": "Not yet verified -- see _confidence_note"
+    },
+    "CO|80911": {
+      "_confidence_note": "LOW/NO confidence on a specific current effective tax rate for El Paso County, CO. Colorado's residential assessment rate is unusually low relative to most states (single-digit percent of actual value, applied before the mill levy) and has changed by legislative action multiple times in recent years since the 2020 repeal of the Gallagher Amendment, making any specific percentage this pass could cite likely to be stale by the time it's read. Left null rather than guess a rate that changes on a near-annual legislative cycle.",
+      "county": "El Paso County, CO (Colorado Springs, near Fort Carson)",
+      "taxModel": "fallback",
+      "taxFields": {
+        "estimatedEffectiveTaxRatePct": { "value": null, "confidence": "Estimated", "source": null }
+      },
+      "taxInsights": [
+        {
+          "note": "Colorado applies a residential assessment rate (a fraction of actual value, well below 100%) before the local mill levy -- this rate has been changed by the state legislature multiple times since the Gallagher Amendment was repealed in 2020, so a specific figure risks being out of date. Not tax or legal advice; confirm the current assessment rate and mill levy with the El Paso County Assessor.",
+          "source": null
+        },
+        {
+          "note": "Security-Widefield and Fountain are common off-post rental markets for Fort Carson. Verify the current effective rate for the exact parcel via the El Paso County Assessor before this feeds a customer report.",
+          "source": null
+        }
+      ],
+      "verifiedAt": "2026-09-03",
+      "source": "Not yet verified -- see _confidence_note"
+    },
+    "CA|92057": {
+      "_confidence_note": "MODERATE confidence on the structural fact (Prop 13's 1% base rate cap on assessed value) -- this is a long-standing state constitutional provision. LOW/NO confidence on a single specific effective rate for a given Oceanside parcel, because the actual bill also includes voter-approved local bonds/assessments and, in many newer developments near Camp Pendleton, a Mello-Roos Community Facilities District (CFD) special tax that can add substantially more (sometimes 0.5-1%+ on top of the 1% base) -- variance this pass cannot resolve without the specific parcel. Left null rather than publish a figure that could be materially low for a CFD-encumbered property.",
+      "county": "San Diego County, CA (Oceanside, near Camp Pendleton)",
+      "taxModel": "fallback",
+      "taxFields": {
+        "estimatedEffectiveTaxRatePct": { "value": null, "confidence": "Estimated", "source": null }
+      },
+      "taxInsights": [
+        {
+          "note": "California's Proposition 13 caps the general property tax rate at 1% of assessed value (assessed value being the purchase price for a new buyer, growing at most ~2%/year thereafter), plus voter-approved local bonds/assessments that typically add a modest amount on top statewide. Not tax or legal advice; confirm with the San Diego County Assessor.",
+          "source": null
+        },
+        {
+          "note": "Many newer developments in the Oceanside/Camp Pendleton area carry a Mello-Roos Community Facilities District (CFD) special tax on top of the base 1% rate -- this can add a meaningful amount to the annual bill and is specific to the subdivision, not the county as a whole. Always check the specific parcel's tax bill or a title report for an active CFD lien before underwriting a Camp Pendleton-area rental.",
+          "source": null
+        }
+      ],
+      "verifiedAt": "2026-09-03",
+      "source": "Cal. Const. art. XIIIA (Prop 13, 1978) (structural 1% base rate only -- see _confidence_note for what is NOT verified)"
+    },
+    "VA|23452": {
+      "_confidence_note": "LOW/NO confidence on a specific current real estate tax rate for the City of Virginia Beach. Virginia's independent cities each set their own real estate tax rate per $100 of assessed value (there is no separate overlapping county layer inside an independent city), which this pass could not verify for the current fiscal year. Left null.",
+      "county": "City of Virginia Beach, VA (independent city, near Naval Station Norfolk / Joint Expeditionary Base Little Creek-Fort Story)",
+      "taxModel": "fallback",
+      "taxFields": {
+        "estimatedEffectiveTaxRatePct": { "value": null, "confidence": "Estimated", "source": null }
+      },
+      "taxInsights": [
+        {
+          "note": "Virginia's independent cities (Virginia Beach, Norfolk, Chesapeake, etc.) each set and collect their own real estate tax rate directly -- there is no separate county layer to add on top the way there is in most other states. Not tax or legal advice; confirm the current rate with the Virginia Beach Commissioner of the Revenue.",
+          "source": null
+        },
+        {
+          "note": "Virginia Beach is one of the largest off-post rental markets for the Hampton Roads-area Navy installations. Verify the current per-$100 rate via the city before this feeds a customer report.",
+          "source": null
+        }
+      ],
+      "verifiedAt": "2026-09-03",
+      "source": "Not yet verified -- see _confidence_note"
+    },
+    "VA|23502": {
+      "_confidence_note": "Same treatment as the Virginia Beach entry above -- LOW/NO confidence on a specific current rate for the City of Norfolk, left null.",
+      "county": "City of Norfolk, VA (independent city, near Naval Station Norfolk)",
+      "taxModel": "fallback",
+      "taxFields": {
+        "estimatedEffectiveTaxRatePct": { "value": null, "confidence": "Estimated", "source": null }
+      },
+      "taxInsights": [
+        {
+          "note": "Virginia's independent cities each set and collect their own real estate tax rate directly, with no separate overlapping county layer. Not tax or legal advice; confirm the current rate with the Norfolk Commissioner of the Revenue.",
+          "source": null
+        },
+        {
+          "note": "Norfolk is home to the world's largest naval base (Naval Station Norfolk) and is a core rental market for this product's Hampton Roads customers. Verify the current per-$100 rate via the city before this feeds a customer report.",
+          "source": null
+        }
+      ],
+      "verifiedAt": "2026-09-03",
+      "source": "Not yet verified -- see _confidence_note"
+    },
+    "KY|42240": {
+      "_confidence_note": "LOW/NO confidence on a specific current effective tax rate for Christian County. This pass had no reliable authoritative source for the current-year combined county/city/school rate. Left null.",
+      "county": "Christian County, KY (Hopkinsville, near Fort Campbell)",
+      "taxModel": "fallback",
+      "taxFields": {
+        "estimatedEffectiveTaxRatePct": { "value": null, "confidence": "Estimated", "source": null }
+      },
+      "taxInsights": [
+        {
+          "note": "Hopkinsville (Christian County) is the Kentucky-side off-post rental market for Fort Campbell, which straddles the KY/TN state line. Verify the current combined rate with the Christian County PVA (Property Valuation Administrator) before this feeds a customer report. Not tax or legal advice.",
+          "source": null
+        }
+      ],
+      "verifiedAt": "2026-09-03",
+      "source": "Not yet verified -- see _confidence_note"
+    },
+    "TN|37042": {
+      "_confidence_note": "LOW/NO confidence on a specific current effective tax rate for Montgomery County. This pass had no reliable authoritative source for the current-year combined county/city/school rate. Left null.",
+      "county": "Montgomery County, TN (Clarksville, near Fort Campbell)",
+      "taxModel": "fallback",
+      "taxFields": {
+        "estimatedEffectiveTaxRatePct": { "value": null, "confidence": "Estimated", "source": null }
+      },
+      "taxInsights": [
+        {
+          "note": "Clarksville (Montgomery County) is the Tennessee-side off-post rental market for Fort Campbell, which straddles the KY/TN state line, and is one of the state's largest cities by population growth. Tennessee assesses residential property at 25% of appraised value statewide (a structural fact, not directly usable by this codebase's fallback single-rate model) before the local rate is applied. Verify the current combined rate with the Montgomery County Assessor of Property before this feeds a customer report. Not tax or legal advice.",
+          "source": null
+        }
+      ],
+      "verifiedAt": "2026-09-03",
+      "source": "Not yet verified -- see _confidence_note"
     }
   }
 }

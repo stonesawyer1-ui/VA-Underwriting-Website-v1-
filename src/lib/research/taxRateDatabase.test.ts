@@ -31,3 +31,39 @@ describe("lookupTaxRate — completeness guard", () => {
     expect(lookupTaxRate("CA", "90001")).toBeNull();
   });
 });
+
+/**
+ * Coverage for the 2026-09-03 expansion (military-installation-adjacent
+ * counties, GRR follow-up task 3): every new entry that left its required
+ * rate field(s) null must be refused by the completeness guard, exactly
+ * like the existing SC/TX entries above — an incomplete entry is inert by
+ * construction, never a source of an unverified number in a real report.
+ */
+describe("lookupTaxRate — 2026-09-03 military-installation entries", () => {
+  it("refuses the new NC entries (Cumberland/Hoke) pending a verified combined rate", () => {
+    expect(lookupTaxRate("NC", "28303")).toBeNull();
+    expect(lookupTaxRate("NC", "28376")).toBeNull();
+  });
+
+  it("refuses the new TX entries (Bell/Coryell/El Paso) pending verified city/ISD/county rates", () => {
+    expect(lookupTaxRate("TX", "76542")).toBeNull();
+    expect(lookupTaxRate("TX", "76522")).toBeNull();
+    expect(lookupTaxRate("TX", "79924")).toBeNull();
+  });
+
+  it("refuses the new SC entry (Richland) pending a verified millage", () => {
+    expect(lookupTaxRate("SC", "29209")).toBeNull();
+  });
+
+  it("refuses every new fallback-model entry pending a verified effective rate", () => {
+    expect(lookupTaxRate("GA", "31907")).toBeNull();
+    expect(lookupTaxRate("GA", "31313")).toBeNull();
+    expect(lookupTaxRate("WA", "98499")).toBeNull();
+    expect(lookupTaxRate("CO", "80911")).toBeNull();
+    expect(lookupTaxRate("CA", "92057")).toBeNull();
+    expect(lookupTaxRate("VA", "23452")).toBeNull();
+    expect(lookupTaxRate("VA", "23502")).toBeNull();
+    expect(lookupTaxRate("KY", "42240")).toBeNull();
+    expect(lookupTaxRate("TN", "37042")).toBeNull();
+  });
+});
