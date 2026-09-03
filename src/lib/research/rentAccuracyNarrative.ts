@@ -23,23 +23,34 @@ import type { RentResearchOutcome } from "@/lib/research/researchRentEstimate";
  * number (rentSource === "research"), the existing rentConfidenceLabel /
  * confidenceNote already say what research thinks of its own figure, so a
  * second "does research agree with itself" paragraph would be redundant.
+ *
+ * Tone rule (added 2026-09-03, owner feedback): this text goes in front of a
+ * paying customer, so it states the FINDING, never the research process's
+ * own play-by-play. Concretely: never explain *why* a search came back
+ * empty or degraded (a session limit, an unavailable source, "did not
+ * return usable results this session," etc.) — that's internal mechanics,
+ * not evidence about the property, and it reads as an apology/excuse rather
+ * than a professional finding. Every branch below states only (a) whether
+ * independent data was found and (b) what it shows, full stop. This also
+ * means `confidenceNote` — free-text the research model writes about its
+ * OWN process — is deliberately never concatenated into this narrative
+ * (sanitizeReportText.ts still filters it separately for the fields that
+ * do use it, but the real fix here is not passing it through at all).
  */
 export function buildRentAccuracyNarrative(buyerMonthlyRent: number, rentResearch: RentResearchOutcome): string {
   if (rentResearch.status !== "ok") {
-    // Research genuinely didn't run or errored (Path B territory in most
-    // cases, but this function is also defensively safe to call regardless
-    // of that classification) — say so plainly rather than implying comps
-    // were checked when they weren't.
-    return `Research could not independently verify this figure this session (research service unavailable or not configured); the underwriting relies on the buyer's own reported estimate of $${buyerMonthlyRent.toLocaleString()}/mo.`;
+    // Research didn't produce a result. State the fact, not the cause.
+    return `This figure could not be independently verified against market data. The underwriting relies on the buyer's reported estimate of $${buyerMonthlyRent.toLocaleString()}/mo.`;
   }
 
-  const { low, base, high, confidence, confidenceNote, comps } = rentResearch.result;
+  const { low, base, high, confidence, comps } = rentResearch.result;
   const hasRange = low !== null && high !== null;
 
   if (!hasRange && comps.length === 0) {
     // A genuine data gap on the research side — never invent a supporting
-    // range or comps that were never found.
-    return `Research could not independently verify this figure — no usable comparable rental listings were found (confidence: ${confidence}${confidenceNote ? `; ${confidenceNote}` : ""}). The underwriting relies on the buyer's own reported estimate of $${buyerMonthlyRent.toLocaleString()}/mo; this has not been corroborated by live comps.`;
+    // range or comps that were never found, and never narrate the reason
+    // no comps came back.
+    return `Independent comparable-rental data was not available for this property. The underwriting relies on the buyer's reported estimate of $${buyerMonthlyRent.toLocaleString()}/mo, which has not been corroborated by market data.`;
   }
 
   const rangeText = hasRange ? `$${low!.toLocaleString()}-$${high!.toLocaleString()}/mo` : null;
@@ -49,19 +60,19 @@ export function buildRentAccuracyNarrative(buyerMonthlyRent: number, rentResearc
   const nearRange = hasRange && !withinRange && (buyerMonthlyRent < low! ? low! - buyerMonthlyRent : buyerMonthlyRent - high!) <= 0.1 * (base ?? buyerMonthlyRent);
 
   if (withinRange) {
-    return `Research found ${compCountText}${rangeText ? ` ranging ${rangeText}` : ""} (confidence: ${confidence}), which supports the buyer's reported estimate of $${buyerMonthlyRent.toLocaleString()}/mo — the buyer's figure falls within the researched range.${confidenceNote ? ` ${confidenceNote}` : ""}`;
+    return `Market research identified ${compCountText}${rangeText ? ` ranging ${rangeText}` : ""} (confidence: ${confidence}), supporting the buyer's reported estimate of $${buyerMonthlyRent.toLocaleString()}/mo.`;
   }
 
   if (nearRange) {
-    return `Research found ${compCountText}${rangeText ? ` ranging ${rangeText}` : ""} (confidence: ${confidence}), which is close to but not exactly within the buyer's reported estimate of $${buyerMonthlyRent.toLocaleString()}/mo — reasonably close, but worth a second look before relying on it fully.${confidenceNote ? ` ${confidenceNote}` : ""}`;
+    return `Market research identified ${compCountText}${rangeText ? ` ranging ${rangeText}` : ""} (confidence: ${confidence}), placing the buyer's reported estimate of $${buyerMonthlyRent.toLocaleString()}/mo close to, but outside, the researched range.`;
   }
 
   if (hasRange) {
     const direction = buyerMonthlyRent < low! ? "below" : "above";
-    return `Research found ${compCountText}${rangeText ? ` ranging ${rangeText}` : ""} (confidence: ${confidence}), which is notably ${direction} the buyer's reported estimate of $${buyerMonthlyRent.toLocaleString()}/mo — this is a meaningful discrepancy the buyer should reconcile (e.g. against the lease, unit condition, or amenities) before relying on their own figure for this deal.${confidenceNote ? ` ${confidenceNote}` : ""}`;
+    return `Market research identified ${compCountText}${rangeText ? ` ranging ${rangeText}` : ""} (confidence: ${confidence}), notably ${direction} the buyer's reported estimate of $${buyerMonthlyRent.toLocaleString()}/mo. This discrepancy should be reconciled against the lease, unit condition, or amenities before relying on the buyer's figure for this deal.`;
   }
 
-  // Comps exist but low/high didn't come back — fall back to whatever
-  // research actually said without inventing a range.
-  return `Research found ${compCountText} but did not return a clear rent range to compare directly against the buyer's reported estimate of $${buyerMonthlyRent.toLocaleString()}/mo (confidence: ${confidence}).${confidenceNote ? ` ${confidenceNote}` : ""}`;
+  // Comps exist but low/high didn't come back — state what was found
+  // without inventing a range.
+  return `Market research identified ${compCountText} but did not produce a comparable rent range for the buyer's reported estimate of $${buyerMonthlyRent.toLocaleString()}/mo (confidence: ${confidence}).`;
 }

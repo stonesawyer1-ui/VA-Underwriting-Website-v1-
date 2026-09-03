@@ -33,6 +33,14 @@ describe("sanitizeReportText — defense-in-depth filter for tool-mechanics text
     expect(looksLikeToolMechanicsText("TOOL-USE-LIMIT reached")).toBe(true);
   });
 
+  it("catches 'tool usage limit' phrasing (variant that slipped past the original pattern list, 2026-09-03)", () => {
+    expect(looksLikeToolMechanicsText("A web-search capacity limit was hit before comps could be gathered.")).toBe(true);
+  });
+
+  it("catches 'did not return usable results this session' phrasing", () => {
+    expect(looksLikeToolMechanicsText("The rent-comparable search did not return usable results this session.")).toBe(true);
+  });
+
   it("returns the fallback for empty or whitespace-only text", () => {
     expect(sanitizeReportText("", "fallback", "test")).toBe("fallback");
     expect(sanitizeReportText("   ", "fallback", "test")).toBe("fallback");

@@ -75,7 +75,9 @@ const TECHNICAL_LANGUAGE_PATTERNS: RegExp[] = [
   /\bsession (?:was|has been) exhausted\b/i,
   /\bmax_uses\b/i,
   /\btool_use\b/i,
-  /\bexceeded (?:the )?(?:tool|search)(?:[- ]use)? (?:limit|budget)\b/i,
+  /\btool[- ]?(?:usage|use) limit\b/i,
+  /\b(?:web[- ]?search|search) capacity\b/i,
+  /\bexceeded (?:the )?(?:tool|search)(?:[- ]use)? (?:limit|budget|capacity)\b/i,
   /\bblocked with a tool[- ]use[- ]limit error\b/i,
   /\banthropic api\b/i,
   /\bapi key\b/i,
@@ -84,6 +86,9 @@ const TECHNICAL_LANGUAGE_PATTERNS: RegExp[] = [
   /\bAbortController\b/i,
   /\bwithHardDeadline\b/i,
   /\b(?:claude|the model|the assistant) (?:was unable to|could not) (?:use|call|invoke) (?:the |its )?(?:web[- ]?search|tool)\b/i,
+  /\b(?:hit|reached) (?:a|the) (?:tool|search|web[- ]?search)[- ]?(?:usage|use)? (?:limit|budget|capacity)\b/i,
+  /\bdid not return usable results this session\b/i,
+  /\bnot return usable results\b/i,
 ];
 
 /** True when the text describes its own tool/session/API mechanics rather than substantive findings — exposed separately for callers that want to check/log without necessarily replacing the text. */
