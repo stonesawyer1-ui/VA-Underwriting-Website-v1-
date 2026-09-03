@@ -7,11 +7,12 @@ import type {
 } from "./types";
 
 /**
- * Illustrative default baseline county conforming loan limit. Always
- * editable in the form — this is a starting point, not a live FHFA/VA
- * lookup.
+ * Illustrative default baseline county conforming loan limit — the 2026
+ * FHFA baseline for a single-family home in most U.S. counties (high-cost
+ * areas go up to $1,249,125). Always editable in the form — this is a
+ * starting point, not a live FHFA/VA lookup per county.
  */
-export const DEFAULT_COUNTY_LOAN_LIMIT = 806_500;
+export const DEFAULT_COUNTY_LOAN_LIMIT = 832_750;
 
 export const RENT_RANGE_BY_CONFIDENCE: Record<"low" | "moderate" | "high", number> = {
   high: 0.05,
