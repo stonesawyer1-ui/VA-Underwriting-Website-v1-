@@ -83,6 +83,8 @@ export type UnderwritingReportData = {
   cashOnCashPct: number;
   capRatePct: number;
   rentComps: { address: string; rent: number; beds: number; baths: number; source: string }[];
+  /** Actual radius (in miles) searched for rent comps, used to disclose the search scope when zero comps were found. */
+  rentSearchRadiusMiles: number;
 
   entitlementFirstUse: boolean;
   entitlementAvailable: number;
@@ -265,7 +267,8 @@ export function UnderwritingReportDocument(data: UnderwritingReportData) {
           </View>
         )}
 
-        {data.rentComps.length > 0 && (
+        <Text style={styles.flagTitle}>Comparable Rentals Used</Text>
+        {data.rentComps.length > 0 ? (
           <View style={styles.table}>
             <View style={styles.rowHeader}>
               <Text style={[styles.cellHeaderL, { flex: 1.6 }]}>Comparable</Text>
@@ -282,6 +285,11 @@ export function UnderwritingReportDocument(data: UnderwritingReportData) {
               </View>
             ))}
           </View>
+        ) : (
+          <Text style={styles.p}>
+            No active comparable rental listings were identified within a {data.rentSearchRadiusMiles}-mile search
+            radius of this property.
+          </Text>
         )}
 
         <View style={flagStyle}>

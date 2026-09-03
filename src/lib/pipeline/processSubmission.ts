@@ -6,7 +6,7 @@ import {
   sendStillProcessingNotice,
 } from "@/lib/email";
 import { researchProperty } from "@/lib/research/researchProperty";
-import { researchRentEstimate } from "@/lib/research/researchRentEstimate";
+import { researchRentEstimate, computeRentSearchRadiusMiles } from "@/lib/research/researchRentEstimate";
 import { researchMemoNarrative } from "@/lib/research/researchMemoNarrative";
 import { resolveTaxInputs, resolveYearlyInsurance, resolveMonthlyRent, buildEngineInputs } from "@/lib/pipeline/buildEngineInputs";
 import { computeUnderwriting } from "@/lib/workbook/computeUnderwriting";
@@ -355,7 +355,7 @@ export async function processSubmission(job: ProcessingJob): Promise<ProcessSubm
   }
 
   await chargeAllowanceForJob(job);
-  await buildAndSendReport({ formData, referenceId, isCondo, research, rentResearch, narrative, resolvedTax, insurance, rent });
+  await buildAndSendReport({ formData, referenceId, isCondo, research, rentResearch, narrative, resolvedTax, insurance, rent, rentRefinementRound });
   return "completed";
 }
 
@@ -375,10 +375,13 @@ async function buildAndSendReport(args: {
   resolvedTax: ReturnType<typeof resolveTaxInputs>;
   insurance: ReturnType<typeof resolveYearlyInsurance>;
   rent: ReturnType<typeof resolveMonthlyRent>;
+  /** Which rent-refinement round produced `rentResearch` — determines the search radius actually used, disclosed in the report when zero comps were found. */
+  rentRefinementRound: number;
   /** Skip the actual customer email — used by regenerateReportFiles() to produce an owner-facing copy of an already-sent report without re-sending it. */
   skipSend?: boolean;
 }): Promise<{ reportPdf: Buffer; underwritingPdf: Buffer; workbookXlsx: Buffer }> {
-  const { formData, referenceId, isCondo, research, rentResearch, narrative, resolvedTax, insurance, rent, skipSend } = args;
+  const { formData, referenceId, isCondo, research, rentResearch, narrative, resolvedTax, insurance, rent, rentRefinementRound, skipSend } = args;
+  const rentSearchRadiusMiles = computeRentSearchRadiusMiles(rentRefinementRound);
 
   const engineInputs = buildEngineInputs(formData, research, rentResearch, resolvedTax);
   const outputs = await computeUnderwriting(engineInputs);
@@ -464,6 +467,7 @@ async function buildAndSendReport(args: {
     cashOnCashPct: typeof dealNumbers.cashOnCashPct === "number" ? dealNumbers.cashOnCashPct * 100 : 0,
     capRatePct: typeof dealNumbers.capRatePct === "number" ? dealNumbers.capRatePct : 0,
     rentComps: rentResearchResult?.comps ?? [],
+    rentSearchRadiusMiles,
 
     entitlementFirstUse: outputs.vaLoanNumbers.isFirstTimeUse === "Yes",
     entitlementAvailable: typeof outputs.vaLoanNumbers.entitlementRemaining === "number" ? outputs.vaLoanNumbers.entitlementRemaining : 0,
@@ -630,7 +634,7 @@ export async function forceCompleteHeldJob(
     };
   }
 
-  await buildAndSendReport({ formData, referenceId, isCondo, research, rentResearch, narrative, resolvedTax, insurance, rent });
+  await buildAndSendReport({ formData, referenceId, isCondo, research, rentResearch, narrative, resolvedTax, insurance, rent, rentRefinementRound: 0 });
 
   job.status = "completed";
   await saveJob(job);
@@ -658,7 +662,7 @@ export async function regenerateReportFiles(
 
   const { formData } = job;
   const { isCondo, research, rentResearch, narrative, resolvedTax, insurance, rent } = await recomputeResearchForJob(formData);
-  const files = await buildAndSendReport({ formData, referenceId, isCondo, research, rentResearch, narrative, resolvedTax, insurance, rent, skipSend: true });
+  const files = await buildAndSendReport({ formData, referenceId, isCondo, research, rentResearch, narrative, resolvedTax, insurance, rent, rentRefinementRound: 0, skipSend: true });
   return { status: "ok", files };
 }
 

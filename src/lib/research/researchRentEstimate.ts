@@ -46,8 +46,17 @@ export type RentResearchOutcome =
  * platforms, different phrasing — rather than repeat the identical
  * query and land on the same answer again.
  */
+/**
+ * Single source of truth for the rent-comp search radius formula. Round 0
+ * (the initial pass) searches 10 miles; each confidence-seeking refinement
+ * round widens the radius by 7 miles, capped at 30.
+ */
+export function computeRentSearchRadiusMiles(refinementRound: number): number {
+  return Math.min(10 + refinementRound * 7, 30);
+}
+
 function systemPrompt(refinementRound: number): string {
-  const radiusMiles = Math.min(10 + refinementRound * 7, 30);
+  const radiusMiles = computeRentSearchRadiusMiles(refinementRound);
   const refinementNote =
     refinementRound > 0
       ? `\n\nIMPORTANT — this is refinement attempt ${refinementRound + 1}: an earlier search for this same property did not reach "high" confidence. Do not just repeat the same query. Genuinely broaden your effort this time: search additional listing platforms and local property-management sites you may not have tried, rephrase your search terms (try the neighborhood name, nearby cross-streets, or the zip code alone rather than just the street address), and use the full ${radiusMiles}-mile radius available this round. A different, wider search is far more likely to turn up better comps than repeating the same search would.`
