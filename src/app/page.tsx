@@ -2,6 +2,7 @@ import { Container } from "@/components/Container";
 import { CTAButton } from "@/components/CTAButton";
 import { SectionKicker } from "@/components/SectionKicker";
 import { Reveal } from "@/components/Reveal";
+import { Disclosure } from "@/components/Disclosure";
 import { MemoCardPreview } from "@/components/MemoCardPreview";
 import { pricingTiers } from "@/lib/site";
 import Link from "next/link";
@@ -9,14 +10,17 @@ import Link from "next/link";
 const problems = [
   {
     title: "PCS orders reset your tax bill",
+    teaser: "Convert to a rental and most counties reassess — fast.",
     body: "Convert an owner-occupied VA purchase to a rental after PCS and most counties reassess. The escrow line you budgeted for is rarely the one you actually pay.",
   },
   {
     title: "Rent coverage is a guess, not a number",
+    teaser: "Zillow estimates don't know your real post-PCS PITI.",
     body: "Zillow rent estimates don't account for your actual post-PCS PITI, vacancy, or the tax spike above. Buyers find out the math doesn't work after the ink is dry.",
   },
   {
     title: "You're underwriting blind",
+    teaser: "Nobody checks the deal still cash flows once you're gone.",
     body: "Lenders qualify the loan. Nobody is independently checking whether the property still cash flows once you're stationed 1,200 miles away.",
   },
 ];
@@ -25,21 +29,25 @@ const steps = [
   {
     step: "01",
     title: "Submit property + loan info",
+    teaser: "Address, VA loan terms, PCS timeline. About 5 minutes.",
     body: "Tell us the address, your VA loan terms, and your PCS timeline through a short intake form. Takes about five minutes.",
   },
   {
     step: "02",
     title: "We underwrite independently",
+    teaser: "Real tax rules and real comps — not the pre-approval numbers.",
     body: "We pull local tax reassessment rules, comparable rents, and market data — then model your post-PCS numbers, not the pre-approval numbers.",
   },
   {
     step: "03",
     title: "Receive your Underwriting Report PDF",
+    teaser: "Tax spike, rent coverage, market trends, and risk factors.",
     body: "A clear, professional VA Home Underwriting Report covering tax spike exposure, rent coverage, market trends, and the risk factors that matter for your specific deal.",
   },
   {
     step: "04",
     title: "Decide with confidence",
+    teaser: "Go, no-go, or renegotiate — with a real number in hand.",
     body: "Go, no-go, or renegotiate — armed with an independent number instead of a lender's best-case projection.",
   },
 ];
@@ -60,9 +68,8 @@ export default function HomePage() {
                 flow — <span className="text-red-500">after closing.</span>
               </h1>
               <p className="mt-6 max-w-xl text-lg leading-relaxed text-white/70">
-                A flat-fee, done-for-you risk review for VA loan buyers and
-                2-4 unit house-hackers. We check the post-PCS tax spike, rent
-                coverage, and cash flow math before you sign — not after.
+                A flat-fee risk review checking your post-PCS tax spike, rent
+                coverage, and cash flow math — before you sign.
               </p>
               <div className="mt-9 flex flex-col gap-4 sm:flex-row">
                 <CTAButton href="/get-started">Get Your Underwriting Report</CTAButton>
@@ -99,12 +106,9 @@ export default function HomePage() {
             {problems.map((p, i) => (
               <Reveal key={p.title} delay={i * 0.1}>
                 <div className="h-full border-t-2 border-navy-900/10 pt-6">
-                  <h3 className="font-display text-lg font-bold text-navy-900">
-                    {p.title}
-                  </h3>
-                  <p className="mt-3 text-sm leading-relaxed text-navy-900/60">
+                  <Disclosure title={p.title} teaser={p.teaser}>
                     {p.body}
-                  </p>
+                  </Disclosure>
                 </div>
               </Reveal>
             ))}
@@ -125,15 +129,17 @@ export default function HomePage() {
           <div className="mt-14 grid grid-cols-1 gap-px overflow-hidden rounded-sm bg-navy-900/10 sm:grid-cols-2 lg:grid-cols-4">
             {steps.map((s, i) => (
               <Reveal key={s.step} delay={i * 0.08} className="bg-navy-50 p-8">
-                <span className="font-display text-3xl font-bold text-red-600/30">
-                  {s.step}
-                </span>
-                <h3 className="mt-4 font-display text-base font-bold text-navy-900">
-                  {s.title}
-                </h3>
-                <p className="mt-2 text-sm leading-relaxed text-navy-900/60">
+                <Disclosure
+                  title={s.title}
+                  teaser={s.teaser}
+                  eyebrow={
+                    <span className="mb-2 block font-display text-3xl font-bold text-red-600/30">
+                      {s.step}
+                    </span>
+                  }
+                >
                   {s.body}
-                </p>
+                </Disclosure>
               </Reveal>
             ))}
           </div>
@@ -150,7 +156,7 @@ export default function HomePage() {
               house-hack first.
             </h2>
             <p className="mt-5 max-w-2xl text-sm leading-relaxed text-navy-900/60">
-              {"Garrison Risk Review is veteran-owned and built specifically around VA loan mechanics and post-PCS house-hacking — not a generic real estate calculator with a flag on it."}
+              {"Veteran-owned, built specifically for VA loan mechanics and post-PCS house-hacking — not a generic real estate calculator with a flag on it."}
             </p>
           </Reveal>
         </Container>

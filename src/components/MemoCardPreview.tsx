@@ -1,8 +1,16 @@
+// Mirrors the real report's actual stat row (UnderwritingReportDocument.tsx's
+// "Monthly Cash Flow / Cash-on-Cash Return / Cap Rate / Total Monthly PITI"
+// stat cards) and real verdict banner language — not invented fields. Same
+// standard applied to /sample-report (2026-09-03): a visitor's first look at
+// the product, on the homepage hero, should show the numbers and verdict
+// wording the real report actually uses, not a look-alike. Figures below
+// match the sample data in render-sample-public.tsx for consistency with
+// the downloadable sample PDF.
 const rows = [
-  { label: "Post-PCS Tax Reassessment", value: "+$412 / mo", level: "high" as const },
-  { label: "Rent Coverage (post-PCS)", value: "94%", level: "moderate" as const },
-  { label: "Market Rent Trend (12 mo)", value: "+2.1%", level: "low" as const },
-  { label: "Vacancy Risk Factor", value: "Low", level: "low" as const },
+  { label: "Monthly Cash Flow", value: "+$65", level: "low" as const },
+  { label: "Cash-on-Cash Return", value: "1.8%", level: "moderate" as const },
+  { label: "Cap Rate", value: "5.8%", level: "moderate" as const },
+  { label: "Total Monthly PITI", value: "$2,108", level: "moderate" as const },
 ];
 
 const levelClasses = {
@@ -43,12 +51,12 @@ export function MemoCardPreview({ className = "" }: { className?: string }) {
         ))}
       </div>
 
-      <div className="mt-5 rounded-sm bg-navy-50 p-3">
-        <p className="text-[10px] font-semibold tracking-[0.15em] text-navy-900/50 uppercase">
-          Go / No-Go Signal
+      <div className="mt-5 rounded-sm bg-emerald-700 p-3 text-center">
+        <p className="text-[10px] font-semibold tracking-[0.15em] text-white/80 uppercase">
+          Overall Recommendation
         </p>
-        <p className="mt-1 text-sm font-bold text-navy-900">
-          Proceed with rate-lock contingency
+        <p className="mt-1 text-sm font-bold text-white">
+          PROCEED — this property cash-flows as modeled.
         </p>
       </div>
     </div>

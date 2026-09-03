@@ -3,6 +3,7 @@ import { Container } from "@/components/Container";
 import { CTAButton } from "@/components/CTAButton";
 import { SectionKicker } from "@/components/SectionKicker";
 import { Reveal } from "@/components/Reveal";
+import { Disclosure } from "@/components/Disclosure";
 
 export const metadata: Metadata = {
   title: "Sample Report",
@@ -10,30 +11,46 @@ export const metadata: Metadata = {
     "Preview a sample VA Home Underwriting Report covering tax spike analysis, rent coverage, market trends, and risk factors for a VA loan purchase.",
 };
 
+const stats = [
+  { label: "Monthly Cash Flow", value: "+$65", tone: "text-emerald-700" },
+  { label: "Cash-on-Cash Return", value: "1.8%", tone: "text-navy-900" },
+  { label: "Cap Rate", value: "5.8%", tone: "text-navy-900" },
+  { label: "Total Monthly PITI", value: "$2,108", tone: "text-navy-900" },
+];
+
+// Titles, order, and copy below mirror the real report's actual sections
+// (src/lib/pdf/UnderwritingReportDocument.tsx) as of the comps-radius-
+// disclosure change (2026-09-03) — this page should be updated any time
+// that document's section list or verdict language changes, so a buyer
+// never sees a preview that undersells or misdescribes what they'll
+// actually receive. "Purpose & Scope" and the conditional VA Condo
+// Approval section are omitted here as boilerplate/not-always-present;
+// everything else is the same order a real report ships in.
 const sections = [
   {
-    label: "Section 1",
-    title: "Post-PCS Tax Spike Analysis",
-    body: "Projects your property tax liability after conversion from owner-occupied to non-owner-occupied status, based on the taxing jurisdiction's reassessment triggers and historical millage rates.",
-    stat: { label: "Projected Monthly Increase", value: "+$412" },
+    title: "Tax Spike Risk",
+    teaser: "What your tax bill actually becomes after converting to a rental.",
+    body: "Pulls the applicable county/state tax model — a flat rate, an assessment-ratio split, or a homestead-exemption gap, depending on the state — and shows the real owner-occupied-vs-rental difference, not just today's bill. Every figure carries its source.",
   },
   {
-    label: "Section 2",
-    title: "Rent Coverage Assessment",
-    body: "Compares realistic achievable rent — pulled from active and recently leased comparables, not list-price estimates — against your full post-PCS carrying cost, including the reassessed tax line.",
-    stat: { label: "Rent-to-PITI Coverage", value: "94%" },
+    title: "Rent Coverage vs. Adjusted Post-PCS Cost",
+    teaser: "Real comps, not a Zillow guess — and the exact search radius used.",
+    body: "Shows the actual comparable rental listings found near the property, with address, rent, and bed/bath — the same table shown here. If no comps are found, the report says so plainly and discloses the exact radius searched, rather than silently omitting the section.",
   },
   {
-    label: "Section 3",
-    title: "Local Market Trend Snapshot",
-    body: "A short read on rent and inventory trends in the surrounding submarket over the trailing 12 months, flagged for anything that would materially change your rent assumption.",
-    stat: { label: "12-Month Rent Trend", value: "+2.1%" },
+    title: "Local Market Trends",
+    teaser: "A short read on rent and inventory trends in the surrounding submarket.",
+    body: "Flags anything that would materially change the rent assumption above — rising or softening rents, inventory shifts, and any genuinely mixed signal between sources, called out explicitly rather than averaged away.",
   },
   {
-    label: "Section 4",
-    title: "Cash Flow Risk Factors",
-    body: "Named risk factors specific to your deal — vacancy exposure, HOA/condo assessment risk, insurance line volatility, and financing terms — each rated and explained in plain language.",
-    stat: { label: "Flagged Risk Factors", value: "3" },
+    title: "Positive Factors",
+    teaser: "What's actually working in this deal's favor, not just the risks.",
+    body: "Balances the risk sections above with the deal's real strengths — property condition, entitlement position, and anything about the local tax or financing mechanics that works in the buyer's favor.",
+  },
+  {
+    title: "Summary Risk Rating & Overall Recommendation",
+    teaser: "One clear verdict, up front — Proceed, Do Not Proceed, or Marginal.",
+    body: "The report opens with this call, not buries it: an overall PROCEED / DO NOT PROCEED AS MODELED / MARGINAL recommendation and a LOW–HIGH market risk rating, backed by every number above it.",
   },
 ];
 
@@ -47,9 +64,8 @@ export default function SampleReportPage() {
             See what lands in your inbox.
           </h1>
           <p className="mt-5 max-w-xl text-white/70">
-            Below is a styled excerpt of the VA Home Underwriting Report
-            deliverable using placeholder, redacted figures — not a real
-            client file.
+            A real, sample-data render from the same report generator every
+            customer gets — not a mockup.
           </p>
         </Container>
       </section>
@@ -65,34 +81,52 @@ export default function SampleReportPage() {
                     VA Home Underwriting Report &middot; Sample / Redacted
                   </p>
                   <h2 className="mt-2 font-display text-xl font-bold text-navy-900">
-                    Subject Property Review
+                    123 Sample Ct, Fayetteville, NC
                   </h2>
                 </div>
-                <div className="h-6 w-40 rounded-sm bg-navy-900/10" aria-hidden="true" />
+                <a
+                  href="/sample-underwriting-report.pdf"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 rounded-sm bg-navy-900 px-4 py-2 text-center text-xs font-semibold tracking-wide text-white uppercase hover:bg-navy-900/90"
+                >
+                  Download Full Sample PDF
+                </a>
+              </div>
+
+              {/* Overall recommendation banner — matches the real report's verdict banner */}
+              <div className="mx-8 mt-8 rounded-sm bg-emerald-700 p-4 text-center text-white">
+                <p className="text-[10px] font-semibold tracking-[0.2em] text-white/80 uppercase">
+                  Overall Recommendation
+                </p>
+                <p className="mt-1 font-display text-base font-bold">
+                  PROCEED — this property cash-flows as modeled.
+                </p>
+              </div>
+
+              {/* Headline stat row — matches the real report's stat cards */}
+              <div className="mx-8 mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {stats.map((s) => (
+                  <div key={s.label} className="rounded-sm bg-navy-50 p-3">
+                    <p className="text-[9px] font-semibold tracking-[0.12em] text-navy-900/50 uppercase">
+                      {s.label}
+                    </p>
+                    <p className={`mt-1 font-display text-lg font-bold ${s.tone}`}>{s.value}</p>
+                  </div>
+                ))}
               </div>
 
               {/* Sections */}
-              <div className="divide-y divide-navy-900/10">
-                {sections.map((s) => (
-                  <div key={s.label} className="grid grid-cols-1 gap-6 p-8 sm:grid-cols-3">
-                    <div className="sm:col-span-2">
-                      <p className="text-[10px] font-semibold tracking-[0.2em] text-red-600 uppercase">
-                        {s.label}
-                      </p>
-                      <h3 className="mt-2 font-display text-lg font-bold text-navy-900">
-                        {s.title}
-                      </h3>
-                      <p className="mt-2 text-sm leading-relaxed text-navy-900/60">
+              <div className="mt-8 divide-y divide-navy-900/10">
+                {sections.map((s, i) => (
+                  <div key={s.title} className="p-8">
+                    <p className="text-[10px] font-semibold tracking-[0.2em] text-red-600 uppercase">
+                      Section {i + 1}
+                    </p>
+                    <div className="mt-2">
+                      <Disclosure title={s.title} teaser={s.teaser}>
                         {s.body}
-                      </p>
-                    </div>
-                    <div className="flex flex-col justify-center rounded-sm bg-navy-50 p-5">
-                      <p className="text-[10px] font-semibold tracking-[0.15em] text-navy-900/50 uppercase">
-                        {s.stat.label}
-                      </p>
-                      <p className="mt-1 font-display text-2xl font-bold text-navy-900">
-                        {s.stat.value}
-                      </p>
+                      </Disclosure>
                     </div>
                   </div>
                 ))}
@@ -100,24 +134,22 @@ export default function SampleReportPage() {
 
               {/* Footer */}
               <div className="border-t border-navy-900/10 p-8">
-                <p className="text-[10px] font-semibold tracking-[0.15em] text-navy-900/50 uppercase">
-                  Go / No-Go Signal
-                </p>
-                <p className="mt-2 font-display text-xl font-bold text-navy-900">
-                  Proceed with rate-lock contingency
-                </p>
-                <p className="mt-2 text-sm leading-relaxed text-navy-900/60">
-                  Full report includes underwriter notes, comparable rent
-                  data, and a plain-language summary you can act on
-                  immediately.
-                </p>
+                <a
+                  href="/sample-underwriting-report.pdf"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm font-semibold text-navy-900 underline decoration-red-600 underline-offset-4 hover:text-red-600"
+                >
+                  See the full 3-page sample PDF &rarr;
+                </a>
               </div>
             </div>
           </Reveal>
 
           <p className="mx-auto mt-6 max-w-3xl text-center text-xs text-navy-900/40">
-            All figures shown are illustrative placeholders for formatting
-            purposes only and do not reflect any real property or client.
+            The address, name, and dollar figures above are placeholders —
+            not a real property or client — but every number was produced by
+            the same report generator and PDF layout your report ships in.
           </p>
         </Container>
       </section>
