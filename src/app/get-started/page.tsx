@@ -141,10 +141,14 @@ export default async function GetStartedPage({
   try {
     checkoutSession = await stripe.checkout.sessions.retrieve(sessionId);
   } catch {
+    // sessionId reaching here matched neither a test/friend code above nor a
+    // real Stripe session — could be an expired checkout link OR a mistyped
+    // promo code (the pricing page's "Have a promo code?" box submits here
+    // too), so the message covers both without guessing which one it was.
     return (
       <GateMessage
-        title="We couldn't find that order."
-        body="That checkout link looks invalid or expired. Choose a plan again to continue."
+        title="We couldn't find that order or promo code."
+        body="That checkout link or code looks invalid, expired, or already used up. Choose a plan to continue, or double-check the code."
       />
     );
   }
