@@ -419,6 +419,28 @@ async function buildAndSendReport(args: {
         )
       : null;
 
+  // Moderate-confidence disclosure note (2026-09-04 policy change, owner's
+  // call on incident GRR-MTM4KYH7): a research-sourced rent figure rated
+  // "moderate" now passes the confidence gate (see confidenceGate.ts) instead
+  // of holding for review — but only together with this note, which is what
+  // distinguishes the new policy from the pre-2026-09-02 behavior of letting
+  // "moderate" ship completely silently. Mutually exclusive with
+  // rentAccuracyNarrative above: that one fires only for rent.source ===
+  // "customer" (buyer-supplied), this one only for rent.source === "research"
+  // with a "moderate" self-rating, so the two boxes never both render for the
+  // same report. Passed through sanitizeReportText a second time even though
+  // the source confidenceNote was already sanitized once where it's built in
+  // researchRentEstimate.ts — defense in depth, matching how
+  // rentAccuracyNarrative above is likewise double-sanitized.
+  const rentModerateConfidenceNote =
+    rent.source === "research" && rentResearchResult?.confidence === "moderate"
+      ? sanitizeReportText(
+          rentResearchResult.confidenceNote,
+          "Research rated this rent estimate 'moderate' confidence; a detailed explanation was not available.",
+          "rentModerateConfidenceNote",
+        )
+      : null;
+
   const reportData: UnderwritingReportData = {
     propertyAddressLine: `${formData.property.address}, ${formData.property.city}, ${formData.property.state} ${formData.property.zip}`,
     county: formData.property.county,
@@ -453,7 +475,7 @@ async function buildAndSendReport(args: {
       rent.source === "research"
         ? `${rentResearchResult?.confidence ?? "unknown"} confidence (area market research)${
             rent.comparison.buyerEstimate ? " — higher confidence than the buyer's own estimate, shown below" : ""
-          }${rentResearchResult?.confidenceNote ? ` — ${rentResearchResult.confidenceNote}` : ""}`
+          }`
         : rent.source === "regional_average"
           ? "regional average estimate — not live comps for this address"
           : `${formData.rentEstimate.confidence} confidence (buyer estimate)${
@@ -461,6 +483,7 @@ async function buildAndSendReport(args: {
             }`,
     rentComparison: rent.comparison,
     rentAccuracyNarrative,
+    rentModerateConfidenceNote,
     rentAfterVacancy: numberOf("rentAfterVacancy"),
     moneyLeftOverMonthly: numberOf("moneyLeftOverMonthly"),
     moneyLeftOverYearly: numberOf("moneyLeftOverYearly"),

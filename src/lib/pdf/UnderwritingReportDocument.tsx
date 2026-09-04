@@ -77,6 +77,20 @@ export type UnderwritingReportData = {
    * report still owes the reader an honest, evidence-based read on it.
    */
   rentAccuracyNarrative: string | null;
+  /**
+   * Disclosure note for a RESEARCH-SOURCED rent figure rated "moderate"
+   * confidence — distinct from rentAccuracyNarrative above, which is
+   * buyer-supplied-only. Added 2026-09-04 per the owner's policy on
+   * incident GRR-MTM4KYH7: a "moderate" research-sourced rent estimate now
+   * passes the confidence gate (confidenceGate.ts) rather than holding for
+   * review, but only together with this note explaining why confidence is
+   * moderate, sourced from research's own reasoning. Null whenever rent
+   * confidence is "high", or rent didn't come from research at all — see
+   * processSubmission.ts for exactly when this is set. Mutually exclusive
+   * with rentAccuracyNarrative: the two never both render for the same
+   * report.
+   */
+  rentModerateConfidenceNote: string | null;
   rentAfterVacancy: number;
   moneyLeftOverMonthly: number;
   moneyLeftOverYearly: number;
@@ -264,6 +278,13 @@ export function UnderwritingReportDocument(data: UnderwritingReportData) {
           <View style={[styles.flagBox, styles.flagBoxAmber]}>
             <Text style={styles.flagTitle}>Rent Estimate — Accuracy Evidence (Buyer-Supplied Figure)</Text>
             <Text style={styles.p}>{data.rentAccuracyNarrative}</Text>
+          </View>
+        )}
+
+        {data.rentModerateConfidenceNote && (
+          <View style={[styles.flagBox, styles.flagBoxAmber]}>
+            <Text style={styles.flagTitle}>Rent Estimate — Why Confidence Is Moderate</Text>
+            <Text style={styles.p}>{data.rentModerateConfidenceNote}</Text>
           </View>
         )}
 

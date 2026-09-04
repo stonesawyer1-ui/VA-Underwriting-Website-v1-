@@ -33,22 +33,29 @@ function rentResearchWith(confidence: "low" | "moderate" | "high"): RentResearch
   };
 }
 
-describe("evaluateConfidenceGate — 90% (high-only) bar", () => {
+describe("evaluateConfidenceGate — rent research: high and moderate pass, low still holds (2026-09-04 policy)", () => {
   it("passes when rent research is high confidence", () => {
     const result = evaluateConfidenceGate(okResearch, rentResearchWith("high"), "high", "research_estimate", "research");
     expect(result.passed).toBe(true);
     expect(result.reasons).toHaveLength(0);
   });
 
-  it("no longer passes on moderate rent-research confidence (the old ~80% bar)", () => {
+  it("now passes on moderate rent-research confidence, as long as it ships with a disclosure note (2026-09-04 policy change, GRR-MTM4KYH7)", () => {
     const result = evaluateConfidenceGate(okResearch, rentResearchWith("moderate"), "high", "research_estimate", "research");
+    expect(result.passed).toBe(true);
+    expect(result.reasons).toHaveLength(0);
+  });
+
+  it("still fails on low rent-research confidence (a real data gap, unchanged by the 2026-09-04 policy change)", () => {
+    const result = evaluateConfidenceGate(okResearch, rentResearchWith("low"), "high", "research_estimate", "research");
     expect(result.passed).toBe(false);
     expect(result.reasons.length).toBeGreaterThan(0);
   });
 
-  it("fails on low rent-research confidence", () => {
+  it("still sets needsRentRefinement on low rent-research confidence (still worth a broadened retry)", () => {
     const result = evaluateConfidenceGate(okResearch, rentResearchWith("low"), "high", "research_estimate", "research");
     expect(result.passed).toBe(false);
+    expect(result.needsRentRefinement).toBe(true);
   });
 
   it("still fails on a bare default insurance estimate regardless of rent confidence", () => {
@@ -101,10 +108,10 @@ describe("evaluateConfidenceGate — retryability flags (2026-09-03 audit: which
     expect(result.needsPropertyRefinement).toBe(false);
   });
 
-  it("moderate research-sourced rent confidence still sets needsRentRefinement (a broader search genuinely might help)", () => {
+  it("moderate research-sourced rent confidence no longer sets needsRentRefinement (2026-09-04: it's no longer a gate finding at all, so there's nothing to refine)", () => {
     const result = evaluateConfidenceGate(okResearch, rentResearchWith("moderate"), "high", "research_estimate", "research");
-    expect(result.passed).toBe(false);
-    expect(result.needsRentRefinement).toBe(true);
+    expect(result.passed).toBe(true);
+    expect(result.needsRentRefinement).toBe(false);
   });
 
   it("rentSource 'unavailable' sets needsRentRefinement (a successful broadened search would flip the source away from 'unavailable')", () => {

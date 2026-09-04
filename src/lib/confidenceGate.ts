@@ -58,8 +58,41 @@ export type ConfidenceGateResult = {
  * now fails the gate and goes through the confidence-seeking refinement loop
  * in processSubmission.ts instead of auto-sending on a "good enough" comp
  * set.
+ *
+ * --- 2026-09-04 addendum: "moderate" rent confidence passes again, but NOT
+ * as a silent revert ---
+ *
+ * Incident GRR-MTM4KYH7 (906 Mulberry St, Louisville KY) held for review for
+ * 3 rounds and burned every refinement round rated "moderate" for a real,
+ * well-documented reason: the subject is a genuine size outlier for its
+ * immediate rental submarket (every nearby comp runs 950-1,150 sqft against
+ * a 1,438 sqft subject), forcing the search into an adjacent zip and
+ * accepting one comp with a bath-count mismatch. No broader search could
+ * ever fix this — the problem isn't search effort, it's that larger
+ * comparable units genuinely don't exist nearby. Research rated its own
+ * confidence "moderate" every round for exactly this reason, correctly.
+ *
+ * The owner reviewed that incident writeup and made an explicit, narrower
+ * call: "moderate" rent confidence backed by a real research finding is
+ * fine to ship — as long as it comes with a note explaining why, the same
+ * way the incident writeup itself explained it. Below, `CONFIDENCE_PASS_BAR`
+ * now names the bar for the still-failing case ("low") rather than the
+ * passing one, and only `"low"` sets a gate finding for rentSource ===
+ * "research" — see that branch for the updated logic.
+ *
+ * This is deliberately NOT the same as the pre-2026-09-02 behavior this
+ * comment block describes above. The old behavior let "moderate" ship
+ * completely silently — no disclosure to the buyer at all — which is
+ * exactly what the owner objected to on 2026-09-02. The new policy is
+ * narrower: "moderate" ships, but ONLY together with a clear, prominently
+ * displayed note (sourced from research's own reasoning) telling the buyer
+ * why confidence is moderate — see `rentModerateConfidenceNote` in
+ * processSubmission.ts and its rendering in UnderwritingReportDocument.tsx.
+ * "Low" confidence (research genuinely couldn't find usable comps after a
+ * full search — a real data gap, not a documented substitution) still holds
+ * for review and still burns refinement rounds trying to improve it.
  */
-const CONFIDENCE_PASS_BAR = "high" as const;
+const CONFIDENCE_HOLD_BAR = "low" as const;
 
 /**
  * Tax uses the same "never block on a missing number" rule as rent and
@@ -131,9 +164,17 @@ export function evaluateConfidenceGate(
     reasons.push("No rent figure available from the buyer, research, or a regional estimate.");
     needsRentRefinement = true;
   } else if (rentSource === "research" && rentResearch.status === "ok") {
-    if (rentResearch.result.confidence !== CONFIDENCE_PASS_BAR) {
+    // 2026-09-04 policy: "high" and "moderate" both pass the gate — a
+    // "moderate" rating backed by a real, documented research finding (a
+    // wider radius, a bed/bath mismatch, fewer comps) is accepted, but it
+    // ships together with a mandatory disclosure note built from research's
+    // own reasoning (rentModerateConfidenceNote in processSubmission.ts),
+    // never silently. Only "low" — research genuinely couldn't find usable
+    // comps even after a full search — is a real data gap that still holds
+    // for review and is still worth another, broadened refinement round.
+    if (rentResearch.result.confidence === CONFIDENCE_HOLD_BAR) {
       reasons.push(
-        `Rent estimate is not backed by ${CONFIDENCE_PASS_BAR}-confidence comps from research (rated "${rentResearch.result.confidence}": ${rentResearch.result.confidenceNote}).`,
+        `Rent estimate is backed only by low-confidence comps from research (rated "${rentResearch.result.confidence}": ${rentResearch.result.confidenceNote}).`,
       );
       needsRentRefinement = true;
     }

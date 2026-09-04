@@ -44,6 +44,7 @@ const reportData: UnderwritingReportData = {
   rentConfidenceLabel: "high confidence (area market research)",
   rentComparison: { buyerEstimate: null, researchEstimate: null },
   rentAccuracyNarrative: null,
+  rentModerateConfidenceNote: null,
   rentAfterVacancy: 2438,
   moneyLeftOverMonthly: 65,
   moneyLeftOverYearly: 780,
